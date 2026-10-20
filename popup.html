@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<style>
+  body { width: 320px; margin: 0; padding: 12px; font: 13px system-ui, sans-serif; background: #1e2127; color: #e8e8e8; }
+  h1 { font-size: 14px; margin: 0 0 8px; }
+  .cur { font-size: 11px; word-break: break-all; margin-bottom: 8px; opacity: .85; }
+  .cur b { color: #ffb4b4; }
+  input { width: 100%; box-sizing: border-box; padding: 7px 8px; border-radius: 6px; border: 1px solid #444; background: #111; color: #fff; font: 12px ui-monospace, monospace; }
+  .row { display: flex; gap: 8px; margin-top: 8px; }
+  button { flex: 1; padding: 7px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; color: #fff; }
+  #apply { background: #3a86ff; } #reset { background: #e63946; }
+  select { width: 100%; margin-bottom: 8px; padding: 6px; border-radius: 6px; border: 1px solid #444; background: #2b2f36; color: #fff; font: 600 12px system-ui; }
+  select[hidden] { display: none; }
+  .msg { font-size: 11px; margin-top: 8px; opacity: .7; }
+  .foot { display: flex; justify-content: flex-end; margin-top: 10px; padding-top: 8px; border-top: 1px solid #333; color: #aab; }
+</style>
+</head>
+<body>
+  <h1>MPP – API URL</h1>
+  <select id="field" hidden></select>
+  <div class="cur" id="cur">…</div>
+  <input id="url" placeholder="https://api-xxx..." spellcheck="false">
+  <div class="row"><button id="apply">Appliquer</button><button id="reset">Reset</button></div>
+  <div class="msg" id="msg">Secours : fonctionne même si la page est cassée.</div>
+  <div class="foot" data-mpg-update></div>
+  <script src="sites.js"></script>
+  <script src="history.js"></script>
+  <script src="popup.js"></script>
+  <script src="update.js"></script>
+</body>
+</html>

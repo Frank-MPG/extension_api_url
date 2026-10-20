@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "MPG/MPP/L1 – API URL",
+  "version": "1.11.0",
+  "description": "Overlay pour définir / appliquer / reset les API URL custom de mpg.football, mpp.football et ligue1.com.",
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "permissions": [
+    "storage",
+    "scripting",
+    "alarms"
+  ],
+  "host_permissions": [
+    "*://mpp.football/*",
+    "*://*.mpp.football/*",
+    "*://mpg.football/*",
+    "*://*.mpg.football/*",
+    "*://ligue1.com/*",
+    "*://*.ligue1.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "MPG/MPP/L1 – API URL"
+  },
+  "background": {
+    "service_worker": "autoreload.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://mpp.football/*",
+        "*://*.mpp.football/*",
+        "*://mpg.football/*",
+        "*://*.mpg.football/*",
+        "*://ligue1.com/*",
+        "*://*.ligue1.com/*"
+      ],
+      "js": [
+        "sites.js",
+        "history.js",
+        "content.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ]
+}
