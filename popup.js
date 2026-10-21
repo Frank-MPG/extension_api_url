@@ -60,13 +60,15 @@ function normalize(v) {
     const first = site.fields.find((f) => urls[f.id]);
     if (first) sel.value = first.id;
   }
-  const field = () => site.fields.find((f) => f.id === (multi ? sel.value : site.fields[0].id));
+  const fields = ApiUrlSites.fieldsFor(site, env); // URL par défaut selon prod / dev
+  const field = () => fields.find((f) => f.id === (multi ? sel.value : fields[0].id));
   function show() {
     const f = field(), url = urls[f.id];
     $('url').value = url;
     $('url').placeholder = f.def;
-    $('cur').innerHTML = url ? 'Actuelle : <b></b>' : 'Actuelle : défaut';
+    $('cur').innerHTML = url ? 'Actuelle : <b></b>' : '';
     if (url) $('cur').querySelector('b').textContent = url;
+    else $('cur').textContent = 'Actuelle : défaut (' + f.def.replace(/^https?:\/\//, '') + ')';
     $('reset').textContent = multi ? 'Reset ' + f.label : 'Reset';
   }
   sel.addEventListener('change', show);

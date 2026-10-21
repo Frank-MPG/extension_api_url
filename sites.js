@@ -5,18 +5,19 @@
 // (ligue1.com : L1 / FL1 / Fanbase, comme sur https://ligue1.com/en/debug-mode).
 //   key     : clé localStorage du store
 //   version : version zustand, utilisée seulement si le store n'existe pas encore
-//   fields  : { id (champ dans state.data), label, def (URL par défaut), status (chemin de ping) }
+//   fields  : { id (champ dans state.data), label, def (URL par défaut en prod),
+//               dev (URL par défaut sur dev.* etc. ; sinon def), status (chemin de ping) }
 (() => {
   if (globalThis.ApiUrlSites) return;
 
   const SITES = {
     MPG: {
       title: 'MPG', domain: 'mpg.football', key: 'mmkv.default\\debug', version: 0,
-      fields: [{ id: 'url', label: 'API', def: 'https://api.mpg.football', status: '/app/status' }],
+      fields: [{ id: 'url', label: 'API', def: 'https://api.mpg.football', dev: 'https://dev.api.mpg.football', status: '/app/status' }],
     },
     MPP: {
       title: 'MPP', domain: 'mpp.football', key: 'debug', version: 0,
-      fields: [{ id: 'url', label: 'API', def: 'https://api.mpp.football', status: '/app/status' }],
+      fields: [{ id: 'url', label: 'API', def: 'https://api.mpp.football', dev: 'https://dev.api.monpetitprono.com', status: '/app/status' }],
     },
     L1: {
       title: 'Ligue 1', domain: 'ligue1.com', key: 'mmkv.default\\debug', version: 1,
@@ -41,5 +42,8 @@
   const historyId = (site, field, env = 'prod') =>
     (site.fields.length > 1 ? site.name + '_' + field.id : site.name) + (env === 'dev' ? '_dev' : '');
 
-  globalThis.ApiUrlSites = { SITES, detect, envOf, historyId };
+  // Champs avec l'URL par défaut de l'environnement (def = dev si défini).
+  const fieldsFor = (site, env) => site.fields.map((f) => ({ ...f, def: (env === 'dev' && f.dev) || f.def }));
+
+  globalThis.ApiUrlSites = { SITES, detect, envOf, historyId, fieldsFor };
 })();

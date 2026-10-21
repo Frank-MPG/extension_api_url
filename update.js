@@ -7,13 +7,49 @@
 // - Installée depuis le Chrome Web Store : vérifie la présence d'une nouvelle version
 //   (chrome.runtime.requestUpdateCheck) et l'applique tout de suite (chrome.runtime.reload).
 //   Une vérification silencieuse est aussi faite à l'ouverture (au plus 1 fois par heure).
-// - Chargée « non empaquetée » (installée par le raccourci « Extensions MPG », ou en dev) : le bouton
-//   recharge l'extension depuis le disque. Les mises à jour arrivent par le raccourci (cf. autoreload.js).
+// - Chargée « non empaquetée » (installée par le raccourci « Extensions MPG », ou en dev) : compare la
+//   version qui tourne à la dernière release GitHub (dépôt = `homepage_url` du manifest, mis en cache 1 h,
+//   clic = revérifier) et à manifest.json sur le disque :
+//     · release plus récente → « vX disponible » ; clic = lance le raccourci « Extensions MPG »
+//     · disque plus récent (fichiers remplacés, pas encore rechargée) → « recharger vX » ; clic = recharge
+//     · sinon → « vX · à jour »
+//   Les mises à jour arrivent par le raccourci (puis rechargement auto, cf. autoreload.js).
 (() => {
   if (window.MpgUpdate) return;
   const AUTO_EVERY = 60 * 60 * 1000;
   const LAST_KEY = 'mpgUpdateLastCheck';
-  const version = chrome.runtime.getManifest().version;
+  const RELEASE_KEY = 'mpgUpdateLatestRelease';
+  const SHORTCUT_URL = 'shortcuts://run-shortcut?name=' + encodeURIComponent('Extensions MPG');
+  const manifest = chrome.runtime.getManifest();
+  const version = manifest.version;
+  // github.com/<owner>/<repo> depuis homepage_url
+  const repo = (String(manifest.homepage_url || '').match(/github\.com\/([^/]+\/[^/#?]+)/) || [])[1] || '';
+  const cmp = (a, b) => {
+    const pa = String(a).replace(/^v/, '').split('.').map(Number), pb = String(b).replace(/^v/, '').split('.').map(Number);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) { const d = (pa[i] || 0) - (pb[i] || 0); if (d) return d > 0 ? 1 : -1; }
+    return 0;
+  };
+  async function diskVersion() {
+    try { return (await (await fetch(chrome.runtime.getURL('manifest.json'), { cache: 'no-store' })).json()).version; }
+    catch { return version; }
+  }
+  // Dernière release GitHub (API publique, 60 requêtes / h / IP : on met en cache)
+  async function latestRelease(force) {
+    if (!repo) return null;
+    try {
+      const c = JSON.parse(localStorage.getItem(RELEASE_KEY) || 'null');
+      if (!force && c && c.repo === repo && Date.now() - c.ts < AUTO_EVERY) return c.version;
+    } catch {}
+    const res = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, { cache: 'no-store', headers: { Accept: 'application/vnd.github+json' } });
+    if (!res.ok) throw new Error(`GitHub : HTTP ${res.status}`);
+    const v = String((await res.json()).tag_name || '').replace(/^v/, '');
+    try { localStorage.setItem(RELEASE_KEY, JSON.stringify({ repo, version: v, ts: Date.now() })); } catch {}
+    return v;
+  }
+  function runShortcut() {
+    const a = document.createElement('a'); a.href = SHORTCUT_URL; a.rel = 'noopener';
+    document.body.append(a); a.click(); a.remove();
+  }
 
   const css = `
     .mpgu{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border:1px solid currentColor;border-radius:999px;
@@ -85,10 +121,34 @@
       } finally { btn.disabled = installing; }
     }
 
+    // Non empaquetée : release GitHub + version sur le disque
+    async function checkUnpacked(force) {
+      if (force) { set('Vérification…', 'busy'); btn.disabled = true; }
+      try {
+        const disk = await diskVersion();
+        if (cmp(disk, version) > 0) {
+          set(`Recharger v${disk}`, 'new', `Les fichiers sont en v${disk}, Chrome exécute encore la v${version}. Cliquer pour recharger (la popup se ferme ; recharge ensuite les onglets ouverts).`);
+          btn.onclick = () => chrome.runtime.reload();
+          return;
+        }
+        let latest = null, err = '';
+        try { latest = await latestRelease(force); } catch (e) { err = String(e && e.message || e); }
+        if (latest && cmp(latest, version) > 0) {
+          set(`v${latest} disponible`, 'new', `Tu as la v${version}. Cliquer pour lancer le raccourci « Extensions MPG » (ou le lancer depuis l'app Raccourcis) : l'extension se recharge ensuite toute seule.`);
+          btn.onclick = runShortcut;
+          return;
+        }
+        if (err) set(`v${version}`, force ? 'err' : '', `Impossible de vérifier les mises à jour (${err}). Cliquer pour réessayer.`);
+        else set(`v${version} · à jour`, 'ok', (latest ? `Dernière version publiée : v${latest}.` : 'Pas de dépôt GitHub renseigné (homepage_url).') + ' Cliquer pour revérifier.');
+        btn.onclick = () => checkUnpacked(true);
+      } finally { btn.disabled = false; }
+    }
+
     isDev().then((dev) => {
       if (dev) {
-        set(`v${version} · recharger`, '', 'Recharge l\'extension depuis son dossier. Pour récupérer une nouvelle version : lancer le raccourci « Extensions MPG ».');
-        btn.onclick = () => chrome.runtime.reload();
+        set(`v${version}`, '', 'Vérification des mises à jour…');
+        btn.onclick = () => checkUnpacked(true);
+        checkUnpacked(false);
         return;
       }
       set(`v${version} · mises à jour`, '', 'Vérifier les mises à jour');

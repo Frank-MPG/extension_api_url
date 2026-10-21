@@ -1,4 +1,4 @@
-// MPG/MPP/L1 – API URL : overlay injecté par l'extension (indépendant de l'app React),
+// MPG / MPP / L1 – Changer d'API : overlay injecté par l'extension (indépendant de l'app React),
 // donc toujours disponible même si l'app plante à cause d'une mauvaise API URL.
 (() => {
   if (window.__mppApiUrlOverlay) return;
@@ -8,7 +8,7 @@
   const site = globalThis.ApiUrlSites.detect(location.hostname);
   if (!site) return;
   const ENV = globalThis.ApiUrlSites.envOf(site, location.hostname); // historique séparé prod / dev
-  const FIELDS = site.fields;
+  const FIELDS = globalThis.ApiUrlSites.fieldsFor(site, ENV); // URL par défaut selon prod / dev
   const MULTI = FIELDS.length > 1;
   let fi = 0; // champ affiché dans le panneau (onglet actif)
   const field = () => FIELDS[fi];
