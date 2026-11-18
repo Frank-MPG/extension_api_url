@@ -170,6 +170,12 @@
       .ic.pin.on { color:#ffd166; }
       .ic svg { width:13px; height:13px; }
       .empty { font-size:11px; opacity:.45; }
+      .ttlist { display:flex; flex-wrap:wrap; gap:4px; }
+      .tt { padding:4px 9px; border-radius:999px; border:1px solid #3a3f48; background:#2b2f36; color:#c9ced6; cursor:pointer; font:600 11px system-ui; }
+      .tt:hover { color:#fff; border-color:#9d7bff; }
+      .tt.active { background:#7c5cff; border-color:#7c5cff; color:#fff; }
+      .tt.busy { opacity:.6; }
+      .tt small { font-weight:500; opacity:.7; margin-left:4px; }
     </style>
     <button class="pill" part="pill"><span class="dot"></span><span class="lbl">API</span><span class="pu"></span></button>
     <div class="panel">
@@ -179,6 +185,10 @@
       <div class="st cur-st"><span class="d"></span><span class="t"></span><button class="ic re" title="Re-tester (URL courante + historique)">↻</button></div>
       <input type="text" placeholder="https://api-xxx..." spellcheck="false" autocomplete="off">
       <div class="st inp inp-st" hidden><span class="d"></span><span class="t"></span></div>
+      <div class="histbox ttbox" hidden>
+        <div class="histhead"><span>Time-traveler</span></div>
+        <div class="ttlist"></div>
+      </div>
       <div class="histbox">
         <div class="histhead"><span class="hh">Historique</span><button class="clear" title="Supprime toutes les entrées non épinglées">Clear all</button></div>
         <div class="hist"></div>
@@ -328,19 +338,65 @@
   }
   input.addEventListener('input', pingInput);
 
+  // ---------- Time-traveler : un bouton par instance → applique son API (links[field().tt]) ----------
+  // Token en lecture seule (scope « instances »), volontairement en dur : il n'est pas sensible.
+  const TT_API = 'https://time-traveler.mpg.football/api/instances';
+  const TT_TOKEN = 'eyJzY29wZSI6Imluc3RhbmNlcyIsImFwcCI6ImV4dGVuc2lvbl9jaHJvbWUiLCJpYXQiOiIyMDI2LTExLTE3VDE1OjE1OjE4Ljg4NVoifQ.omoiUOSsKohU8CLpNuU12wkPeue94X6hsASYhcq-Mj8';
+  const ttBox = $('.ttbox'), ttList = $('.ttlist');
+  let ttReq = null; // une requête par ouverture du panneau
+  const fetchInstances = () => fetch(TT_API, {
+    headers: { Authorization: 'Bearer ' + TT_TOKEN }, cache: 'no-store', credentials: 'omit', signal: AbortSignal.timeout(5000),
+  }).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then((j) => j.instances || []);
+  const fmt = (d) => new Date(d).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+  const line = (text) => Object.assign(document.createElement('div'), { className: 'empty', textContent: text });
+  async function renderTT() {
+    const f = field();
+    ttBox.hidden = !f.tt;
+    if (!f.tt) return;
+    if (!ttReq) { ttReq = fetchInstances(); ttList.replaceChildren(line('Chargement…')); }
+    let list;
+    try { list = (await ttReq).filter((i) => i.links?.[f.tt]); } catch (e) {
+      ttReq = null; // nouvel essai à la prochaine ouverture
+      if (field() === f) ttList.replaceChildren(line('Time-traveler injoignable (' + (e.message || e.name) + ')'));
+      return;
+    }
+    if (field() !== f) return; // onglet changé entre-temps
+    if (!list.length) return ttList.replaceChildren(line('Aucune instance'));
+    const current = getUrl();
+    ttList.replaceChildren(...list.map((i) => {
+      const url = i.links[f.tt];
+      const ready = !i.busy && (!i.lastJob || i.lastJob.status === 'ready');
+      const ver = (k) => i.version?.[k] && k + ' ' + i.version[k].ref + '@' + i.version[k].sha;
+      const b = document.createElement('button');
+      b.className = 'tt' + (url === current ? ' active' : '') + (ready ? '' : ' busy');
+      b.textContent = i.label || i.instance;
+      if (i.label) b.append(Object.assign(document.createElement('small'), { textContent: i.instance }));
+      b.title = [
+        url,
+        i.clock?.now && 'Date simulée : ' + fmt(i.clock.now),
+        [ver('back'), ver('front')].filter(Boolean).join(' · '),
+        i.creator && 'Créée par ' + i.creator,
+        i.lifetime?.expiresAt && !i.lifetime.keep && 'Expire : ' + fmt(i.lifetime.expiresAt),
+        !ready && 'État : ' + (i.busy ? 'occupée' : i.lastJob.status),
+      ].filter(Boolean).join('\n');
+      b.addEventListener('click', () => { input.value = url; apply(); });
+      return b;
+    }));
+  }
+
   // Affiche un champ dans le panneau (onglet).
   function selectField(i) {
     fi = i;
     clearTimeout(inpTimer);
     input.value = getUrl(); input.style.borderColor = ''; inpSt.hidden = true;
     input.placeholder = field().def;
-    render(); renderHistory(); pingCurrent();
+    render(); renderHistory(); renderTT(); pingCurrent();
     setTimeout(() => input.focus(), 0);
   }
   function toggle(open = !panel.classList.contains('open')) {
     panel.classList.toggle('open', open);
     if (open) {
-      histPings.clear();
+      histPings.clear(); ttReq = null;
       // Onglet par défaut : le premier champ qui a une URL custom.
       const i = FIELDS.findIndex((f) => getUrl(f));
       selectField(i < 0 ? 0 : i);

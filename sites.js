@@ -6,14 +6,15 @@
 //   key     : clé localStorage du store
 //   version : version zustand, utilisée seulement si le store n'existe pas encore
 //   fields  : { id (champ dans state.data), label, def (URL par défaut en prod),
-//               dev (URL par défaut sur dev.* etc. ; sinon def), status (chemin de ping) }
+//               dev (URL par défaut sur dev.* etc. ; sinon def), status (chemin de ping),
+//               tt (clé de links dans les instances Time-traveler → boutons rapides) }
 (() => {
   if (globalThis.ApiUrlSites) return;
 
   const SITES = {
     MPG: {
       title: 'MPG', domain: 'mpg.football', key: 'mmkv.default\\debug', version: 0,
-      fields: [{ id: 'url', label: 'API', def: 'https://api.mpg.football', dev: 'https://dev.api.mpg.football', status: '/app/status' }],
+      fields: [{ id: 'url', label: 'API', def: 'https://api.mpg.football', dev: 'https://dev.api.mpg.football', status: '/app/status', tt: 'mpg-api' }],
     },
     MPP: {
       title: 'MPP', domain: 'mpp.football', key: 'debug', version: 0,
