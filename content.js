@@ -98,7 +98,7 @@
       * { box-sizing:border-box; }
       [hidden] { display:none !important; }
       /* L'hôte est en all:initial (isolé du CSS du site), qui écrase :host : la police se pose ici. */
-      .pill, .panel { font-family:system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing:antialiased; }
+      .pill, .panel, .clock, .slot { font-family:system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing:antialiased; }
       button, input { font-family:inherit; }
       .pill { display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none;
         padding:8px 14px; border-radius:999px; border:none; color:#fff; font-size:14px; font-weight:600;
@@ -122,8 +122,25 @@
         max-width:520px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       .pill.custom .pu { color:#ffe1e3; background:rgba(0,0,0,.25); }
       /* Heure dans l'instance Time-traveler : pastille à part, au-dessus, hors animation de la principale */
-      .clock { width:max-content; margin-bottom:6px; padding:5px 12px; border-radius:999px; color:#fff;
-        font:600 13px ui-monospace, SFMono-Regular, Menlo, monospace; background:#5b3fd1; box-shadow:0 2px 10px rgba(0,0,0,.35); }
+      .clock { display:flex; gap:6px; width:max-content; margin-bottom:6px; padding:5px 12px; border-radius:999px; color:#fff;
+        font-size:13px; font-weight:600; background:#5b3fd1; box-shadow:0 2px 10px rgba(0,0,0,.35);
+        cursor:grab; user-select:none; -webkit-user-select:none; touch-action:none; }
+      .clock .dt, .clock .tm { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; }
+      /* Dans le header (clic long + glisser) : grosse horloge, date au-dessus de l'heure */
+      .clock.docked { position:fixed; top:10px; left:50%; transform:translateX(-50%); margin:0; min-width:200px; height:58px;
+        flex-direction:column; align-items:center; justify-content:center; gap:1px; padding:6px 20px; border-radius:14px;
+        background:linear-gradient(135deg, #6a4ee0, #4a31b8); box-shadow:0 6px 20px rgba(0,0,0,.4); }
+      .clock.docked .em { display:none; }
+      .clock.docked .dt { font:500 11.5px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; opacity:.85; }
+      .clock.docked .tm { font-size:26px; font-weight:700; line-height:1.1; letter-spacing:1px; }
+      .clock.dragging { position:fixed; transform:none; margin:0; cursor:grabbing; z-index:1; opacity:.92;
+        box-shadow:0 10px 28px rgba(0,0,0,.5); }
+      /* Emplacement cible pendant le déplacement */
+      .slot { display:flex; align-items:center; justify-content:center; border:2px dashed #8b6cff; border-radius:999px;
+        background:rgba(91,63,209,.15); color:#8b6cff; font-size:11px; font-weight:700; text-shadow:0 0 3px #fff; }
+      .slot.over { background:rgba(91,63,209,.35); border-color:#fff; color:#fff; text-shadow:none; }
+      .slot.corner { width:190px; height:27px; margin-bottom:6px; }
+      .slot.head { position:fixed; top:10px; left:50%; transform:translateX(-50%); width:220px; height:58px; border-radius:14px; }
       .pill .dot { width:9px; height:9px; border-radius:50%; background:#7bd389; }
       .pill.custom .dot { background:#fff; }
 
@@ -222,7 +239,9 @@
       kbd { font:600 11px ui-monospace, SFMono-Regular, Menlo, monospace; padding:1px 5px; border-radius:4px;
         background:#2c313a; border:1px solid #3a404c; color:#c9ced6; }
     </style>
-    <div class="clock" hidden></div>
+    <div class="slot head" hidden>Déposer ici</div>
+    <div class="slot corner" hidden>Déposer ici</div>
+    <div class="clock" hidden title="Heure dans l'instance Time-traveler · clic long pour la déplacer"><span class="em">🕰</span><span class="dt"></span><span class="tm"></span></div>
     <button class="pill" part="pill"><span class="dot"></span><span class="lbl">API</span><span class="pu"></span></button>
     <div class="panel">
       <div class="title"><span class="ttl">API URL</span><span class="env" hidden title="Historique séparé de la prod">dev</span><button class="x" title="Fermer (Échap)">×</button></div>
@@ -415,8 +434,54 @@
   function renderClock() {
     const tt = pillInstance();
     clock.hidden = !Number.isFinite(tt?.skew);
-    if (!clock.hidden) clock.textContent = '🕰 ' + new Date(Date.now() + tt.skew).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'medium' });
+    clock.classList.toggle('docked', docked);
+    if (clock.hidden) return;
+    const d = new Date(Date.now() + tt.skew);
+    $('.clock .dt').textContent = d.toLocaleDateString('fr-FR', docked ? { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' } : { dateStyle: 'short' });
+    $('.clock .tm').textContent = d.toLocaleTimeString('fr-FR');
   }
+  // Clic long sur l'heure puis glisser : bas à gauche ↔ header (grosse horloge). La cible est en pointillés.
+  // Mémorisé dans chrome.storage.local : même position sur tous les sites / environnements, et après rechargement.
+  const DOCK_KEY = 'apiUrlClockDocked';
+  let docked = false;
+  try { chrome.storage.local.get(DOCK_KEY).then((o) => { docked = !!o[DOCK_KEY]; renderClock(); }, () => {}); } catch {}
+  clock.addEventListener('contextmenu', (e) => e.preventDefault());
+  clock.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const x0 = e.clientX, y0 = e.clientY, zone = $(docked ? '.slot.corner' : '.slot.head');
+    let drag = null; // écart pointeur / coin de l'horloge, une fois le clic long validé
+    const hit = (ev) => {
+      const r = zone.getBoundingClientRect(), m = 30;
+      return ev.clientX > r.left - m && ev.clientX < r.right + m && ev.clientY > r.top - m && ev.clientY < r.bottom + m;
+    };
+    const timer = setTimeout(() => {
+      const r = clock.getBoundingClientRect();
+      drag = { dx: x0 - r.left, dy: y0 - r.top };
+      try { clock.setPointerCapture(e.pointerId); } catch {}
+      zone.hidden = false;
+      clock.classList.add('dragging');
+      Object.assign(clock.style, { left: r.left + 'px', top: r.top + 'px' });
+    }, 400);
+    const move = (ev) => {
+      if (!drag) { if (Math.hypot(ev.clientX - x0, ev.clientY - y0) > 6) end(); return; }
+      Object.assign(clock.style, { left: ev.clientX - drag.dx + 'px', top: ev.clientY - drag.dy + 'px' });
+      zone.classList.toggle('over', hit(ev));
+    };
+    const end = (ev) => {
+      clearTimeout(timer);
+      ['pointermove', 'pointerup', 'pointercancel'].forEach((t) => window.removeEventListener(t, t === 'pointermove' ? move : end, true));
+      if (!drag) return;
+      if (ev?.type === 'pointerup' && hit(ev)) {
+        docked = !docked;
+        try { chrome.storage.local.set({ [DOCK_KEY]: docked }); } catch {}
+      }
+      zone.hidden = true; zone.classList.remove('over');
+      clock.classList.remove('dragging'); clock.style.left = clock.style.top = '';
+      renderClock();
+    };
+    ['pointermove', 'pointerup', 'pointercancel'].forEach((t) => window.addEventListener(t, t === 'pointermove' ? move : end, true));
+  });
   async function loadPillTT() {
     const f = FIELDS[0], url = getUrl(f);
     let h = ''; try { h = new URL(url).hostname; } catch {}
