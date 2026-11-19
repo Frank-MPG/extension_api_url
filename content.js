@@ -126,21 +126,20 @@
         font-size:13px; font-weight:600; background:#5b3fd1; box-shadow:0 2px 10px rgba(0,0,0,.35);
         cursor:grab; user-select:none; -webkit-user-select:none; touch-action:none; }
       .clock .dt, .clock .tm { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; }
-      /* Dans le header (clic long + glisser) : grosse horloge, date au-dessus de l'heure */
-      .clock.docked { position:fixed; top:10px; left:50%; transform:translateX(-50%); margin:0; min-width:200px; height:58px;
-        flex-direction:column; align-items:center; justify-content:center; gap:1px; padding:6px 20px; border-radius:14px;
-        background:linear-gradient(135deg, #6a4ee0, #4a31b8); box-shadow:0 6px 20px rgba(0,0,0,.4); }
+      /* Dans le header du site (glisser-déposer) : grosse horloge à la hauteur des menus, date au-dessus de l'heure */
+      .clock.docked { margin:0; min-width:150px; height:40px; flex-direction:column; align-items:center; justify-content:center;
+        gap:0; padding:0 14px; border-radius:10px; background:linear-gradient(135deg, #6a4ee0, #4a31b8); box-shadow:0 2px 8px rgba(0,0,0,.3); }
       .clock.docked .em { display:none; }
-      .clock.docked .dt { font:500 11.5px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; opacity:.85; }
-      .clock.docked .tm { font-size:26px; font-weight:700; line-height:1.1; letter-spacing:1px; }
+      .clock.docked .dt { font:500 10.5px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; opacity:.85; line-height:1.2; }
+      .clock.docked .tm { font-size:18px; font-weight:700; line-height:1.1; letter-spacing:.5px; }
       .clock.dragging { position:fixed; transform:none; margin:0; cursor:grabbing; z-index:1; opacity:.92;
         box-shadow:0 10px 28px rgba(0,0,0,.5); }
       /* Emplacement cible pendant le déplacement */
-      .slot { display:flex; align-items:center; justify-content:center; border:2px dashed #8b6cff; border-radius:999px;
-        background:rgba(91,63,209,.15); color:#8b6cff; font-size:11px; font-weight:700; text-shadow:0 0 3px #fff; }
-      .slot.over { background:rgba(91,63,209,.35); border-color:#fff; color:#fff; text-shadow:none; }
+      .slot { display:flex; align-items:center; justify-content:center; border:2px dashed rgba(255,255,255,.8); border-radius:999px;
+        background:rgba(25,20,55,.45); color:#fff; font-size:11px; font-weight:700; }
+      .slot.over { background:rgba(91,63,209,.7); border-color:#fff; }
       .slot.corner { width:190px; height:27px; margin-bottom:6px; }
-      .slot.head { position:fixed; top:10px; left:50%; transform:translateX(-50%); width:220px; height:58px; border-radius:14px; }
+      .slot.head { width:170px; height:40px; border-radius:10px; }
       .pill .dot { width:9px; height:9px; border-radius:50%; background:#7bd389; }
       .pill.custom .dot { background:#fff; }
 
@@ -241,7 +240,7 @@
     </style>
     <div class="slot head" hidden>Déposer ici</div>
     <div class="slot corner" hidden>Déposer ici</div>
-    <div class="clock" hidden title="Heure dans l'instance Time-traveler · clic long pour la déplacer"><span class="em">🕰</span><span class="dt"></span><span class="tm"></span></div>
+    <div class="clock" hidden title="Heure dans l'instance Time-traveler · glisser pour la déplacer (header ↔ bas à gauche)"><span class="em">🕰</span><span class="dt"></span><span class="tm"></span></div>
     <button class="pill" part="pill"><span class="dot"></span><span class="lbl">API</span><span class="pu"></span></button>
     <div class="panel">
       <div class="title"><span class="ttl">API URL</span><span class="env" hidden title="Historique séparé de la prod">dev</span><button class="x" title="Fermer (Échap)">×</button></div>
@@ -434,49 +433,70 @@
   function renderClock() {
     const tt = pillInstance();
     clock.hidden = !Number.isFinite(tt?.skew);
-    clock.classList.toggle('docked', docked);
-    if (clock.hidden) return;
+    if (clock.hidden) return headHost.remove();
+    const inHead = dragging ? clock.classList.contains('docked') : placeClock();
     const d = new Date(Date.now() + tt.skew);
-    $('.clock .dt').textContent = d.toLocaleDateString('fr-FR', docked ? { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' } : { dateStyle: 'short' });
-    $('.clock .tm').textContent = d.toLocaleTimeString('fr-FR');
+    clock.querySelector('.dt').textContent = d.toLocaleDateString('fr-FR', inHead ? { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' } : { dateStyle: 'short' });
+    clock.querySelector('.tm').textContent = d.toLocaleTimeString('fr-FR');
   }
-  // Clic long sur l'heure puis glisser : bas à gauche ↔ header (grosse horloge). La cible est en pointillés.
-  // Mémorisé dans chrome.storage.local : même position sur tous les sites / environnements, et après rechargement.
+  // Glisser l'heure : bas à gauche ↔ header du site (dernier élément des menus de gauche, en grosse horloge).
+  // La cible est en pointillés. Mémorisé dans chrome.storage.local (tous sites / environnements, après rechargement).
   const DOCK_KEY = 'apiUrlClockDocked';
-  let docked = false;
+  let docked = false, dragging = false;
   try { chrome.storage.local.get(DOCK_KEY).then((o) => { docked = !!o[DOCK_KEY]; renderClock(); }, () => {}); } catch {}
+  // Dans le header, l'horloge vit dans un 2e hôte (shadow DOM fermé) ajouté à la fin de la barre des menus de gauche.
+  const slotHead = $('.slot.head'), slotCorner = $('.slot.corner');
+  const headHost = document.createElement('mpp-api-url-clock');
+  headHost.style.cssText = 'all:initial;display:flex;align-items:center;gap:8px;';
+  const headRoot = headHost.attachShadow({ mode: 'closed' });
+  headRoot.append(root.querySelector('style').cloneNode(true), slotHead);
+  // Classes générées par le build du site : on s'ancre sur le lien « Mon MPG » (data-testid stable).
+  const headNav = () => document.querySelector('a[data-testid="(home)"]')?.parentElement || null;
+  // Range l'horloge à sa place (re-ajoutée chaque seconde si l'app a redessiné le header). Sans header : en bas à gauche.
+  function placeClock() {
+    const nav = docked && headNav();
+    if (nav && nav.lastElementChild !== headHost) nav.append(headHost);
+    if (!nav) headHost.remove();
+    if (nav ? clock.parentNode !== headRoot : clock.nextElementSibling !== pill) nav ? headRoot.append(clock) : root.insertBefore(clock, pill);
+    clock.classList.toggle('docked', !!nav);
+    return !!nav;
+  }
   clock.addEventListener('contextmenu', (e) => e.preventDefault());
   clock.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     e.preventDefault();
-    const x0 = e.clientX, y0 = e.clientY, zone = $(docked ? '.slot.corner' : '.slot.head');
-    let drag = null; // écart pointeur / coin de l'horloge, une fois le clic long validé
+    const x0 = e.clientX, y0 = e.clientY, fromHead = clock.parentNode === headRoot, nav = headNav();
+    const zone = fromHead ? slotCorner : nav && slotHead;
+    if (!zone) return; // pas de header sur cette page : nulle part où aller
+    let drag = null; // écart pointeur / coin de l'horloge, dès que le pointeur a bougé
     const hit = (ev) => {
       const r = zone.getBoundingClientRect(), m = 30;
       return ev.clientX > r.left - m && ev.clientX < r.right + m && ev.clientY > r.top - m && ev.clientY < r.bottom + m;
     };
-    const timer = setTimeout(() => {
-      const r = clock.getBoundingClientRect();
-      drag = { dx: x0 - r.left, dy: y0 - r.top };
-      try { clock.setPointerCapture(e.pointerId); } catch {}
-      zone.hidden = false;
-      clock.classList.add('dragging');
-      Object.assign(clock.style, { left: r.left + 'px', top: r.top + 'px' });
-    }, 400);
     const move = (ev) => {
-      if (!drag) { if (Math.hypot(ev.clientX - x0, ev.clientY - y0) > 6) end(); return; }
+      if (!drag) {
+        if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 4) return; // simple clic : rien
+        const r = clock.getBoundingClientRect();
+        drag = { dx: x0 - r.left, dy: y0 - r.top };
+        dragging = true;
+        if (!fromHead) nav.append(headHost);
+        zone.hidden = false;
+        root.append(clock); // l'overlay est en position:fixed, sans transform hérité du site
+        clock.classList.add('dragging');
+        try { clock.setPointerCapture(e.pointerId); } catch {}
+      }
       Object.assign(clock.style, { left: ev.clientX - drag.dx + 'px', top: ev.clientY - drag.dy + 'px' });
       zone.classList.toggle('over', hit(ev));
     };
     const end = (ev) => {
-      clearTimeout(timer);
       ['pointermove', 'pointerup', 'pointercancel'].forEach((t) => window.removeEventListener(t, t === 'pointermove' ? move : end, true));
       if (!drag) return;
-      if (ev?.type === 'pointerup' && hit(ev)) {
-        docked = !docked;
+      if (ev.type === 'pointerup' && hit(ev)) {
+        docked = !fromHead;
         try { chrome.storage.local.set({ [DOCK_KEY]: docked }); } catch {}
       }
       zone.hidden = true; zone.classList.remove('over');
+      dragging = false;
       clock.classList.remove('dragging'); clock.style.left = clock.style.top = '';
       renderClock();
     };
