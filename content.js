@@ -119,7 +119,7 @@
       /* URL utilisée, en retrait à droite du label */
       .pill .pu { font:500 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; color:#b7bec9;
         background:rgba(0,0,0,.28); padding:3px 9px; border-radius:999px; margin-right:-6px;
-        max-width:380px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        max-width:520px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       .pill.custom .pu { color:#ffe1e3; background:rgba(0,0,0,.25); }
       .pill .dot { width:9px; height:9px; border-radius:50%; background:#7bd389; }
       .pill.custom .dot { background:#fff; }
@@ -265,13 +265,13 @@
   function render() {
     const customs = FIELDS.filter((f) => getUrl(f));
     pill.classList.toggle('custom', customs.length > 0);
-    // Connecté à une instance Time-traveler : son nom et son expiration plutôt que l'URL.
-    const tt = !MULTI && pillTT?.links?.[FIELDS[0].tt] === getUrl(FIELDS[0]) ? pillTT : null;
+    // Connecté à une instance Time-traveler : son nom, son heure et son expiration plutôt que l'URL.
+    const tt = pillInstance();
     lbl.textContent = tt ? 'Time-traveler' : customs.length ? 'API custom' : 'API';
     // URL réellement utilisée (custom ou défaut), sans le protocole ni le slash final.
     // Plusieurs champs : seules les URL custom sont listées (sinon l'URL par défaut du 1er champ).
     pill.querySelector('.pu').textContent = tt
-      ? (tt.label || tt.instance) + ' · ' + expiry(tt)
+      ? ttPillText(tt)
       : !MULTI
       ? host(getUrl(FIELDS[0]) || FIELDS[0].def)
       : customs.length
@@ -404,11 +404,20 @@
   }
   // Pastille : instance de l'URL courante. Un appel au chargement, seulement si l'URL est sur Time-traveler.
   let pillTT = null;
+  const pillInstance = () => (!MULTI && pillTT?.links?.[FIELDS[0].tt] === getUrl(FIELDS[0]) ? pillTT : null);
+  // Heure dans l'instance = horloge locale + écart mesuré au chargement (l'horloge simulée avance en temps réel).
+  const ttPillText = (i) => [i.label || i.instance, Number.isFinite(i.skew) && '🕰 ' + fmt(Date.now() + i.skew), expiry(i)]
+    .filter(Boolean).join(' · ');
   async function loadPillTT() {
     const f = FIELDS[0], url = getUrl(f);
     let h = ''; try { h = new URL(url).hostname; } catch {}
     if (MULTI || !f.tt || !h.endsWith('.' + new URL(TT_API).hostname)) return;
-    try { pillTT = (await fetchInstances()).find((i) => i.links?.[f.tt] === url) || null; render(); } catch {}
+    try { pillTT = (await fetchInstances()).find((i) => i.links?.[f.tt] === url) || null; } catch { return; }
+    if (!pillTT) return;
+    pillTT.skew = Date.parse(pillTT.clock?.now) - Date.now();
+    render();
+    // Seule la pastille est rafraîchie (render() réécrirait aussi le panneau et casserait une sélection en cours).
+    setInterval(() => { const tt = pillInstance(); if (tt) pill.querySelector('.pu').textContent = ttPillText(tt); }, 10000);
   }
   const el = (tag, className, textContent = '') => Object.assign(document.createElement(tag), { className, textContent });
   const line = (text) => el('div', 'empty', text);
