@@ -406,7 +406,7 @@
   let pillTT = null;
   const pillInstance = () => (!MULTI && pillTT?.links?.[FIELDS[0].tt] === getUrl(FIELDS[0]) ? pillTT : null);
   // Heure dans l'instance = horloge locale + écart mesuré au chargement (l'horloge simulée avance en temps réel).
-  const ttPillText = (i) => [i.label || i.instance, Number.isFinite(i.skew) && '🕰 ' + fmt(Date.now() + i.skew), expiry(i)]
+  const ttPillText = (i) => [i.label || i.instance, Number.isFinite(i.skew) && '🕰 ' + new Date(Date.now() + i.skew).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'medium' }), expiry(i)]
     .filter(Boolean).join(' · ');
   async function loadPillTT() {
     const f = FIELDS[0], url = getUrl(f);
@@ -417,7 +417,7 @@
     pillTT.skew = Date.parse(pillTT.clock?.now) - Date.now();
     render();
     // Seule la pastille est rafraîchie (render() réécrirait aussi le panneau et casserait une sélection en cours).
-    setInterval(() => { const tt = pillInstance(); if (tt) pill.querySelector('.pu').textContent = ttPillText(tt); }, 10000);
+    setInterval(() => { const tt = pillInstance(); if (tt) pill.querySelector('.pu').textContent = ttPillText(tt); }, 1000);
   }
   const el = (tag, className, textContent = '') => Object.assign(document.createElement(tag), { className, textContent });
   const line = (text) => el('div', 'empty', text);
