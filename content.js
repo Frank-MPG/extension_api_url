@@ -126,9 +126,15 @@
         font-size:13px; font-weight:600; background:#5b3fd1; box-shadow:0 2px 10px rgba(0,0,0,.35);
         cursor:grab; user-select:none; -webkit-user-select:none; touch-action:none; }
       .clock .dt, .clock .tm { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; }
+      /* Bouton « dates d'aujourd'hui », à droite de l'heure */
+      .clock .sh2 { align-self:center; margin:-2px -6px -2px 2px; width:22px; height:22px; padding:0; border-radius:50%; cursor:pointer;
+        border:1px solid rgba(255,255,255,.45); background:rgba(0,0,0,.2); color:#fff; font-size:12px; line-height:1; }
+      .clock .sh2:hover { background:rgba(255,255,255,.2); }
+      .clock .sh2.on { background:#ffd166; border-color:#ffd166; color:#2b2f36; }
+      .clock.docked .sh2 { grid-column:2; grid-row:1 / span 2; margin:0; }
       /* Dans le header du site (glisser-déposer) : grosse horloge à la hauteur des menus, date au-dessus de l'heure */
-      .clock.docked { margin:0; min-width:150px; height:40px; flex-direction:column; align-items:center; justify-content:center;
-        gap:0; padding:0 14px; border-radius:10px; background:linear-gradient(135deg, #6a4ee0, #4a31b8); box-shadow:0 2px 8px rgba(0,0,0,.3); }
+      .clock.docked { margin:0; min-width:150px; height:40px; display:grid; grid-auto-flow:column; grid-template-rows:auto auto;
+        align-content:center; justify-items:center; column-gap:10px; padding:0 10px 0 14px; border-radius:10px; background:linear-gradient(135deg, #6a4ee0, #4a31b8); box-shadow:0 2px 8px rgba(0,0,0,.3); }
       .clock.docked .em { display:none; }
       .clock.docked .dt { font:500 10.5px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; opacity:.85; line-height:1.2; }
       .clock.docked .tm { font-size:18px; font-weight:700; line-height:1.1; letter-spacing:.5px; }
@@ -240,7 +246,7 @@
     </style>
     <div class="slot head" hidden>Déposer ici</div>
     <div class="slot corner" hidden>Déposer ici</div>
-    <div class="clock" hidden title="Heure dans l'instance Time-traveler · glisser pour la déplacer (header ↔ bas à gauche)"><span class="em">🕰</span><span class="dt"></span><span class="tm"></span></div>
+    <div class="clock" hidden title="Heure dans l'instance Time-traveler · glisser pour la déplacer (header ↔ bas à gauche)"><span class="em">🕰</span><span class="dt"></span><span class="tm"></span><button class="sh2">⇥</button></div>
     <button class="pill" part="pill"><span class="dot"></span><span class="lbl">API</span><span class="pu"></span></button>
     <div class="panel">
       <div class="title"><span class="ttl">API URL</span><span class="env" hidden title="Historique séparé de la prod">dev</span><button class="x" title="Fermer (Échap)">×</button></div>
@@ -438,7 +444,24 @@
     const d = new Date(Date.now() + tt.skew);
     clock.querySelector('.dt').textContent = d.toLocaleDateString('fr-FR', inHead ? { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' } : { dateStyle: 'short' });
     clock.querySelector('.tm').textContent = d.toLocaleTimeString('fr-FR');
+    const on = shiftOn(), days = Math.round(Math.abs(tt.skew) / 864e5);
+    shiftBtn.classList.toggle('on', on);
+    shiftBtn.title = (on ? 'Dates du site ramenées à aujourd\'hui : clic pour revenir aux dates de l\'instance'
+      : 'Ramener toutes les dates du site à aujourd\'hui (décalage de ' + days + ' j)') + ' · recharge la page';
   }
+  // « Dates d'aujourd'hui » : tt_shift.js (monde MAIN) décale les dates des réponses de l'API de l'instance.
+  // Activé pour une API donnée : revenir plus tard sur la même instance le réactive.
+  const SHIFT_KEY = 'apiUrlTTShift', shiftBtn = $('.sh2');
+  const readShift = () => { try { return JSON.parse(localStorage.getItem(SHIFT_KEY)); } catch { return null; } };
+  const shiftOn = () => readShift()?.api === getUrl(FIELDS[0]);
+  shiftBtn.addEventListener('pointerdown', (e) => e.stopPropagation()); // pas de glisser-déposer de l'horloge
+  shiftBtn.addEventListener('click', () => {
+    const tt = pillInstance();
+    if (!tt) return;
+    if (shiftOn()) localStorage.removeItem(SHIFT_KEY);
+    else localStorage.setItem(SHIFT_KEY, JSON.stringify({ api: getUrl(FIELDS[0]), skew: tt.skew }));
+    location.reload();
+  });
   // Glisser l'heure : bas à gauche ↔ header du site (dernier élément des menus de gauche, en grosse horloge).
   // La cible est en pointillés. Mémorisé dans chrome.storage.local (tous sites / environnements, après rechargement).
   const DOCK_KEY = 'apiUrlClockDocked';
@@ -509,6 +532,12 @@
     try { pillTT = (await fetchInstances()).find((i) => i.links?.[f.tt] === url) || null; } catch { return; }
     if (!pillTT) return;
     pillTT.skew = Date.parse(pillTT.clock?.now) - Date.now();
+    // Horloge de l'instance déplacée depuis l'activation : décalage mis à jour (rechargement, sinon dates fausses).
+    const sh = readShift();
+    if (shiftOn() && Number.isFinite(pillTT.skew) && Math.abs(sh.skew - pillTT.skew) > 60000) {
+      localStorage.setItem(SHIFT_KEY, JSON.stringify({ ...sh, skew: pillTT.skew }));
+      return location.reload();
+    }
     render();
     // Seule l'heure est rafraîchie (render() réécrirait aussi le panneau et casserait une sélection en cours).
     setInterval(renderClock, 1000);
