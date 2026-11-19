@@ -121,11 +121,15 @@
         background:rgba(0,0,0,.28); padding:3px 9px; border-radius:999px; margin-right:-6px;
         max-width:520px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       .pill.custom .pu { color:#ffe1e3; background:rgba(0,0,0,.25); }
+      /* Heure dans l'instance Time-traveler : pastille à part, au-dessus, hors animation de la principale */
+      .clock { width:max-content; margin-bottom:6px; padding:5px 12px; border-radius:999px; color:#fff;
+        font:600 13px ui-monospace, SFMono-Regular, Menlo, monospace; background:#5b3fd1; box-shadow:0 2px 10px rgba(0,0,0,.35); }
       .pill .dot { width:9px; height:9px; border-radius:50%; background:#7bd389; }
       .pill.custom .dot { background:#fff; }
 
-      .panel { display:none; position:absolute; left:0; bottom:48px; width:440px; max-width:calc(100vw - 24px);
-        max-height:calc(100vh - 72px); overflow:auto; overscroll-behavior:contain;
+      /* Au-dessus de tout l'hôte (pastille + pastille d'heure éventuelle) ; 100% = hauteur de l'hôte */
+      .panel { display:none; position:absolute; left:0; bottom:calc(100% + 10px); width:440px; max-width:calc(100vw - 24px);
+        max-height:calc(100vh - 100% - 34px); overflow:auto; overscroll-behavior:contain;
         background:#1b1e24; color:#e9ecf1; font-size:14px; line-height:1.4; border:1px solid #2c313a;
         border-radius:14px; padding:16px; box-shadow:0 16px 40px rgba(0,0,0,.5); }
       .panel.open { display:flex; flex-direction:column; gap:16px; }
@@ -218,6 +222,7 @@
       kbd { font:600 11px ui-monospace, SFMono-Regular, Menlo, monospace; padding:1px 5px; border-radius:4px;
         background:#2c313a; border:1px solid #3a404c; color:#c9ced6; }
     </style>
+    <div class="clock" hidden></div>
     <button class="pill" part="pill"><span class="dot"></span><span class="lbl">API</span><span class="pu"></span></button>
     <div class="panel">
       <div class="title"><span class="ttl">API URL</span><span class="env" hidden title="Historique séparé de la prod">dev</span><button class="x" title="Fermer (Échap)">×</button></div>
@@ -249,7 +254,7 @@
   const kbd = (keys) => keys.split('+').map((k) => '<kbd>' + k + '</kbd>').join(' + ');
   $('.hint').innerHTML = kbd('Alt+Shift+U') + ' ouvrir / fermer · ' + kbd('Alt+Shift+R') + (MULTI ? ' reset de toutes les URL' : ' reset immédiat');
   const pill = $('.pill'), lbl = $('.lbl'), panel = $('.panel'), input = $('input'), cur = $('.cur'), hist = $('.hist'), clearBtn = $('.clear');
-  const tabs = $('.tabs'), resetBtn = $('.reset'), now = $('.now');
+  const tabs = $('.tabs'), resetBtn = $('.reset'), now = $('.now'), clock = $('.clock');
   $('.env').hidden = ENV !== 'dev';
   clearBtn.addEventListener('click', async () => { await clearHistory(); renderHistory(); });
 
@@ -265,13 +270,14 @@
   function render() {
     const customs = FIELDS.filter((f) => getUrl(f));
     pill.classList.toggle('custom', customs.length > 0);
-    // Connecté à une instance Time-traveler : son nom, son heure et son expiration plutôt que l'URL.
+    // Connecté à une instance Time-traveler : son nom et son expiration plutôt que l'URL.
     const tt = pillInstance();
     lbl.textContent = tt ? 'Time-traveler' : customs.length ? 'API custom' : 'API';
+    renderClock();
     // URL réellement utilisée (custom ou défaut), sans le protocole ni le slash final.
     // Plusieurs champs : seules les URL custom sont listées (sinon l'URL par défaut du 1er champ).
     pill.querySelector('.pu').textContent = tt
-      ? ttPillText(tt)
+      ? (tt.label || tt.instance) + ' · ' + expiry(tt)
       : !MULTI
       ? host(getUrl(FIELDS[0]) || FIELDS[0].def)
       : customs.length
@@ -406,8 +412,11 @@
   let pillTT = null;
   const pillInstance = () => (!MULTI && pillTT?.links?.[FIELDS[0].tt] === getUrl(FIELDS[0]) ? pillTT : null);
   // Heure dans l'instance = horloge locale + écart mesuré au chargement (l'horloge simulée avance en temps réel).
-  const ttPillText = (i) => [i.label || i.instance, Number.isFinite(i.skew) && '🕰 ' + new Date(Date.now() + i.skew).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'medium' }), expiry(i)]
-    .filter(Boolean).join(' · ');
+  function renderClock() {
+    const tt = pillInstance();
+    clock.hidden = !Number.isFinite(tt?.skew);
+    if (!clock.hidden) clock.textContent = '🕰 ' + new Date(Date.now() + tt.skew).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'medium' });
+  }
   async function loadPillTT() {
     const f = FIELDS[0], url = getUrl(f);
     let h = ''; try { h = new URL(url).hostname; } catch {}
@@ -416,8 +425,8 @@
     if (!pillTT) return;
     pillTT.skew = Date.parse(pillTT.clock?.now) - Date.now();
     render();
-    // Seule la pastille est rafraîchie (render() réécrirait aussi le panneau et casserait une sélection en cours).
-    setInterval(() => { const tt = pillInstance(); if (tt) pill.querySelector('.pu').textContent = ttPillText(tt); }, 1000);
+    // Seule l'heure est rafraîchie (render() réécrirait aussi le panneau et casserait une sélection en cours).
+    setInterval(renderClock, 1000);
   }
   const el = (tag, className, textContent = '') => Object.assign(document.createElement(tag), { className, textContent });
   const line = (text) => el('div', 'empty', text);
