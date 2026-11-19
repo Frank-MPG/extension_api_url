@@ -122,19 +122,26 @@
         max-width:520px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       .pill.custom .pu { color:#ffe1e3; background:rgba(0,0,0,.25); }
       /* Heure dans l'instance Time-traveler : pastille à part, au-dessus, hors animation de la principale */
-      .clock { display:flex; gap:6px; width:max-content; margin-bottom:6px; padding:5px 12px; border-radius:999px; color:#fff;
+      /* Ligne heure + bouton « dates d'aujourd'hui » (déplacée ensemble entre le coin et le header) */
+      .cw { display:flex; align-items:center; gap:6px; width:max-content; margin-bottom:6px; }
+      .cw.docked, .cw:has(> .clock[hidden]) { margin:0; }
+      .clock { display:flex; gap:6px; width:max-content; padding:5px 12px; border-radius:999px; color:#fff;
         font-size:13px; font-weight:600; background:#5b3fd1; box-shadow:0 2px 10px rgba(0,0,0,.35);
         cursor:grab; user-select:none; -webkit-user-select:none; touch-action:none; }
       .clock .dt, .clock .tm { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; }
-      /* Bouton « dates d'aujourd'hui », à droite de l'heure */
-      .clock .sh2 { align-self:center; margin:-2px -6px -2px 2px; width:22px; height:22px; padding:0; border-radius:50%; cursor:pointer;
-        border:1px solid rgba(255,255,255,.45); background:rgba(0,0,0,.2); color:#fff; font-size:12px; line-height:1; }
-      .clock .sh2:hover { background:rgba(255,255,255,.2); }
-      .clock .sh2.on { background:#ffd166; border-color:#ffd166; color:#2b2f36; }
-      .clock.docked .sh2 { grid-column:2; grid-row:1 / span 2; margin:0; }
+      /* Bouton rond détaché, à droite de l'heure : violet = dates de l'instance, jaune = dates ramenées à aujourd'hui */
+      .sh2 { flex:none; display:grid; place-items:center; width:28px; height:28px; padding:0; border-radius:50%; cursor:pointer;
+        border:none; background:#5b3fd1; color:#fff; box-shadow:0 2px 10px rgba(0,0,0,.35); transition:transform .1s, background .15s; }
+      .sh2:hover { transform:scale(1.08); background:#6a4ee0; }
+      .sh2.on { background:#ffd166; color:#2b2f36; }
+      .sh2.on:hover { background:#ffdc85; }
+      .sh2 svg { width:17px; height:17px; }
+      .cw.docked .sh2 { width:34px; height:34px; }
+      .cw.docked .sh2 svg { width:20px; height:20px; }
+      .cw:not(:has(.clock)) .sh2 { display:none; } /* pendant le glisser-déposer de l'heure */
       /* Dans le header du site (glisser-déposer) : grosse horloge à la hauteur des menus, date au-dessus de l'heure */
-      .clock.docked { margin:0; min-width:150px; height:40px; display:grid; grid-auto-flow:column; grid-template-rows:auto auto;
-        align-content:center; justify-items:center; column-gap:10px; padding:0 10px 0 14px; border-radius:10px; background:linear-gradient(135deg, #6a4ee0, #4a31b8); box-shadow:0 2px 8px rgba(0,0,0,.3); }
+      .clock.docked { margin:0; min-width:150px; height:40px; flex-direction:column; align-items:center; justify-content:center;
+        gap:0; padding:0 14px; border-radius:10px; background:linear-gradient(135deg, #6a4ee0, #4a31b8); box-shadow:0 2px 8px rgba(0,0,0,.3); }
       .clock.docked .em { display:none; }
       .clock.docked .dt { font:500 10.5px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; opacity:.85; line-height:1.2; }
       .clock.docked .tm { font-size:18px; font-weight:700; line-height:1.1; letter-spacing:.5px; }
@@ -246,7 +253,7 @@
     </style>
     <div class="slot head" hidden>Déposer ici</div>
     <div class="slot corner" hidden>Déposer ici</div>
-    <div class="clock" hidden title="Heure dans l'instance Time-traveler · glisser pour la déplacer (header ↔ bas à gauche)"><span class="em">🕰</span><span class="dt"></span><span class="tm"></span><button class="sh2">⇥</button></div>
+    <div class="cw"><div class="clock" hidden title="Heure dans l'instance Time-traveler · glisser pour la déplacer (header ↔ bas à gauche)"><span class="em">🕰</span><span class="dt"></span><span class="tm"></span></div><button class="sh2" hidden></button></div>
     <button class="pill" part="pill"><span class="dot"></span><span class="lbl">API</span><span class="pu"></span></button>
     <div class="panel">
       <div class="title"><span class="ttl">API URL</span><span class="env" hidden title="Historique séparé de la prod">dev</span><button class="x" title="Fermer (Échap)">×</button></div>
@@ -438,20 +445,27 @@
   // Heure dans l'instance = horloge locale + écart mesuré au chargement (l'horloge simulée avance en temps réel).
   function renderClock() {
     const tt = pillInstance();
-    clock.hidden = !Number.isFinite(tt?.skew);
+    clock.hidden = shiftBtn.hidden = !Number.isFinite(tt?.skew);
     if (clock.hidden) return headHost.remove();
     const inHead = dragging ? clock.classList.contains('docked') : placeClock();
     const d = new Date(Date.now() + tt.skew);
     clock.querySelector('.dt').textContent = d.toLocaleDateString('fr-FR', inHead ? { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' } : { dateStyle: 'short' });
     clock.querySelector('.tm').textContent = d.toLocaleTimeString('fr-FR');
     const on = shiftOn(), days = Math.round(Math.abs(tt.skew) / 864e5);
+    if (shiftBtn.classList.contains('on') !== on || !shiftBtn.firstChild) shiftBtn.innerHTML = on ? TODAY_SVG : TT_SVG;
     shiftBtn.classList.toggle('on', on);
+    shiftBtn.setAttribute('aria-label', on ? 'Revenir aux dates de l\'instance' : 'Ramener les dates à aujourd\'hui');
     shiftBtn.title = (on ? 'Dates du site ramenées à aujourd\'hui : clic pour revenir aux dates de l\'instance'
       : 'Ramener toutes les dates du site à aujourd\'hui (décalage de ' + days + ' j)') + ' · recharge la page';
   }
   // « Dates d'aujourd'hui » : tt_shift.js (monde MAIN) décale les dates des réponses de l'API de l'instance.
   // Activé pour une API donnée : revenir plus tard sur la même instance le réactive.
-  const SHIFT_KEY = 'apiUrlTTShift', shiftBtn = $('.sh2');
+  const SHIFT_KEY = 'apiUrlTTShift', shiftBtn = $('.sh2'), cw = $('.cw');
+  // Icônes : mode instance = calendrier + flèche « vers aujourd'hui » ; mode aujourd'hui = calendrier coché, jour marqué.
+  const CAL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+    + '<rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/>';
+  const TT_SVG = CAL + '<path d="M8 15.5h7.5M13 13l2.5 2.5L13 18"/></svg>';
+  const TODAY_SVG = CAL + '<path d="M8.5 15.5l2.5 2.5 4.5-4.5"/></svg>';
   const readShift = () => { try { return JSON.parse(localStorage.getItem(SHIFT_KEY)); } catch { return null; } };
   const shiftOn = () => readShift()?.api === getUrl(FIELDS[0]);
   shiftBtn.addEventListener('pointerdown', (e) => e.stopPropagation()); // pas de glisser-déposer de l'horloge
@@ -480,15 +494,17 @@
     const nav = docked && headNav();
     if (nav && nav.lastElementChild !== headHost) nav.append(headHost);
     if (!nav) headHost.remove();
-    if (nav ? clock.parentNode !== headRoot : clock.nextElementSibling !== pill) nav ? headRoot.append(clock) : root.insertBefore(clock, pill);
+    if (clock.parentNode !== cw) cw.prepend(clock); // retour d'un glisser-déposer
+    if (nav ? cw.parentNode !== headRoot : cw.nextElementSibling !== pill) nav ? headRoot.append(cw) : root.insertBefore(cw, pill);
     clock.classList.toggle('docked', !!nav);
+    cw.classList.toggle('docked', !!nav);
     return !!nav;
   }
   clock.addEventListener('contextmenu', (e) => e.preventDefault());
   clock.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     e.preventDefault();
-    const x0 = e.clientX, y0 = e.clientY, fromHead = clock.parentNode === headRoot, nav = headNav();
+    const x0 = e.clientX, y0 = e.clientY, fromHead = cw.parentNode === headRoot, nav = headNav();
     const zone = fromHead ? slotCorner : nav && slotHead;
     if (!zone) return; // pas de header sur cette page : nulle part où aller
     let drag = null; // écart pointeur / coin de l'horloge, dès que le pointeur a bougé
