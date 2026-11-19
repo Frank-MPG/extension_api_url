@@ -100,54 +100,49 @@
       /* L'hôte est en all:initial (isolé du CSS du site), qui écrase :host : la police se pose ici. */
       .pill, .panel, .clock, .slot { font-family:system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing:antialiased; }
       button, input { font-family:inherit; }
-      /* Pastilles : dégradés + liseré lumineux en haut (relief) + ombre teintée de la couleur. Une variable par thème. */
-      .pill, .clock, .sh2 { --hl:inset 0 1px 0 rgba(255,255,255,.22), inset 0 0 0 1px rgba(255,255,255,.08); }
-      .pill { --glow:0,0,0; display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none;
+      /* Pastilles « verre dépoli » : fond sombre translucide flouté, la couleur de l'état n'est qu'un accent
+         (liseré --ring, halo --glow, point, icône). Gris = API par défaut, rose = custom, violet = Time-traveler. */
+      .pill, .clock, .sh2 { --ring:rgba(255,255,255,.12); --glow:0,0,0; background:rgba(22,24,32,.72);
+        backdrop-filter:blur(12px) saturate(1.4); -webkit-backdrop-filter:blur(12px) saturate(1.4);
+        box-shadow:inset 0 0 0 1px var(--ring), 0 6px 20px rgba(var(--glow),.28); }
+      .clock, .sh2, .pill.ttp { --ring:rgba(160,130,255,.75); --glow:120,80,255; }
+      .pill { display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none;
         padding:7px 9px 7px 13px; border-radius:999px; border:none; color:#fff; font-size:14px; font-weight:650; letter-spacing:.01em;
-        background:linear-gradient(160deg, #3b4252 0%, #252a35 55%, #1b1f28 100%);
-        box-shadow:var(--hl), 0 4px 14px rgba(var(--glow),.35), 0 1px 3px rgba(0,0,0,.3);
-        opacity:.7; transition:opacity .15s, filter .15s; }
-      .pill:hover { opacity:1; filter:brightness(1.08); }
-      .pill.custom { --glow:214,40,80; opacity:1; transform-origin:center; animation:heartbeat 1.4s ease-in-out infinite;
-        background:linear-gradient(135deg, #ff5d7a 0%, #e5304f 45%, #b3123d 100%); }
-      .pill.ttp { --glow:120,70,255; background:linear-gradient(135deg, #8f6bff 0%, #6a3cf0 45%, #4b1fc4 100%); }
+        transition:filter .15s; }
+      .pill:hover { filter:brightness(1.15); }
+      .pill.custom { --ring:rgba(255,92,122,.75); --glow:255,60,100; transform-origin:center; animation:heartbeat 1.4s ease-in-out infinite; }
+      .pill.ttp { --ring:rgba(160,130,255,.75); --glow:120,80,255; }
       .pill.custom:hover { animation-play-state:paused; }
-      /* Battement de cœur : double pulsation "lub-dub" + halo de la couleur de la pastille qui s'étend */
+      /* Battement de cœur : double pulsation "lub-dub" + halo de la couleur de l'état qui s'étend */
       @keyframes heartbeat {
-        0%   { transform:scale(1);    box-shadow:var(--hl), 0 4px 14px rgba(var(--glow),.35), 0 0 0 0 rgba(var(--glow),.35); }
+        0%   { transform:scale(1);    box-shadow:inset 0 0 0 1px var(--ring), 0 6px 20px rgba(var(--glow),.28), 0 0 0 0 rgba(var(--glow),.35); }
         14%  { transform:scale(1.03); }
         28%  { transform:scale(1); }
-        42%  { transform:scale(1.03); box-shadow:var(--hl), 0 4px 14px rgba(var(--glow),.45), 0 0 0 4px rgba(var(--glow),.15); }
-        70%  { transform:scale(1);    box-shadow:var(--hl), 0 4px 14px rgba(var(--glow),.35), 0 0 0 7px rgba(var(--glow),0); }
-        100% { transform:scale(1);    box-shadow:var(--hl), 0 4px 14px rgba(var(--glow),.35), 0 0 0 0 rgba(var(--glow),0); }
+        42%  { transform:scale(1.03); box-shadow:inset 0 0 0 1px var(--ring), 0 6px 20px rgba(var(--glow),.35), 0 0 0 4px rgba(var(--glow),.15); }
+        70%  { transform:scale(1);    box-shadow:inset 0 0 0 1px var(--ring), 0 6px 20px rgba(var(--glow),.28), 0 0 0 7px rgba(var(--glow),0); }
+        100% { transform:scale(1);    box-shadow:inset 0 0 0 1px var(--ring), 0 6px 20px rgba(var(--glow),.28), 0 0 0 0 rgba(var(--glow),0); }
       }
       @media (prefers-reduced-motion: reduce) { .pill.custom { animation:none; } .tt { transition:none; } }
-      /* URL utilisée, en retrait à droite du label (puits sombre) */
-      .pill .pu { font:500 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; color:#c3cad6;
-        background:rgba(0,0,0,.3); box-shadow:inset 0 1px 2px rgba(0,0,0,.35); padding:3px 10px; border-radius:999px;
+      /* URL utilisée, en retrait à droite du label */
+      .pill .pu { font:500 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; color:#c9cfdb;
+        background:rgba(255,255,255,.07); padding:3px 10px; border-radius:999px;
         max-width:520px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-      .pill.custom .pu { color:#ffe3e8; background:rgba(60,0,15,.32); }
-      .pill.ttp .pu { color:#ece6ff; background:rgba(25,5,70,.35); }
       /* Heure dans l'instance Time-traveler : pastille à part, au-dessus, hors animation de la principale */
       /* Ligne heure + bouton « dates d'aujourd'hui » (déplacée ensemble entre le coin et le header) */
       .cw { display:flex; align-items:center; gap:6px; width:max-content; margin-bottom:7px; }
       .cw.docked, .cw:has(> .clock[hidden]) { margin:0; }
       .clock { display:flex; align-items:center; gap:7px; width:max-content; padding:5px 13px 5px 11px; border-radius:999px; color:#fff;
-        font-size:13px; font-weight:600; background:linear-gradient(135deg, #8f6bff 0%, #6a3cf0 50%, #4b1fc4 100%);
-        box-shadow:var(--hl), 0 4px 14px rgba(120,70,255,.4), 0 1px 3px rgba(0,0,0,.3);
-        cursor:grab; user-select:none; -webkit-user-select:none; touch-action:none; }
+        font-size:13px; font-weight:600; cursor:grab; user-select:none; -webkit-user-select:none; touch-action:none; }
       .clock .dt, .clock .tm { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric:tabular-nums; }
-      .clock .dt { color:#d9cfff; }
+      .clock .dt { color:#b9a8ff; }
       /* Bouton rond détaché, à droite de l'heure : violet = dates de l'instance, ambre = dates ramenées à aujourd'hui */
       .sh2 { flex:none; display:grid; place-items:center; width:28px; height:28px; padding:0; border-radius:50%; cursor:pointer;
-        border:none; color:#fff; background:linear-gradient(135deg, #8f6bff, #4b1fc4);
-        box-shadow:var(--hl), 0 4px 12px rgba(120,70,255,.4), 0 1px 3px rgba(0,0,0,.3); transition:transform .12s, filter .15s; }
-      .sh2:hover { transform:scale(1.1) rotate(-6deg); filter:brightness(1.12); }
+        border:none; color:#b9a8ff; transition:transform .12s, filter .15s; }
+      .sh2:hover { transform:scale(1.1); filter:brightness(1.25); }
       .sh2:active { transform:scale(.95); }
       .sh2:focus-visible { outline:2px solid #fff; outline-offset:2px; }
-      .sh2.on { color:#4a2a00; background:linear-gradient(135deg, #ffe08a 0%, #ffbe3d 50%, #ff9a1f 100%);
-        box-shadow:inset 0 1px 0 rgba(255,255,255,.55), 0 4px 14px rgba(255,160,40,.5), 0 0 0 3px rgba(255,190,61,.25); }
-      .sh2 svg { width:16px; height:16px; filter:drop-shadow(0 1px 0 rgba(0,0,0,.15)); }
+      .sh2.on { --ring:#ffc94d; --glow:255,201,77; color:#ffc94d; box-shadow:inset 0 0 0 1.5px var(--ring), 0 0 14px rgba(var(--glow),.35); }
+      .sh2 svg { width:16px; height:16px; }
       .cw.docked .sh2 { width:34px; height:34px; }
       .cw.docked .sh2 svg { width:19px; height:19px; }
       .cw:not(:has(.clock)) .sh2 { display:none; } /* pendant le glisser-déposer de l'heure */
@@ -156,17 +151,18 @@
         gap:0; padding:0 14px; border-radius:11px; }
       .clock.docked .em { display:none; }
       .clock.docked .dt { font:500 10.5px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; line-height:1.2; }
-      .clock.docked .tm { font-size:18px; font-weight:700; line-height:1.1; letter-spacing:.5px; text-shadow:0 1px 2px rgba(30,0,90,.4); }
+      .clock.docked .tm { font-size:18px; font-weight:700; line-height:1.1; letter-spacing:.5px; }
       .clock.dragging { position:fixed; transform:none; margin:0; cursor:grabbing; z-index:1; opacity:.92;
-        box-shadow:var(--hl), 0 12px 30px rgba(60,20,160,.55); }
+        box-shadow:inset 0 0 0 1px var(--ring), 0 12px 30px rgba(var(--glow),.45); }
       /* Emplacement cible pendant le déplacement */
       .slot { display:flex; align-items:center; justify-content:center; border:2px dashed rgba(255,255,255,.8); border-radius:999px;
         background:rgba(25,20,55,.45); color:#fff; font-size:11px; font-weight:700; }
       .slot.over { background:rgba(91,63,209,.7); border-color:#fff; }
       .slot.corner { width:190px; height:27px; margin-bottom:6px; }
       .slot.head { width:170px; height:40px; border-radius:10px; }
-      .pill .dot { width:9px; height:9px; border-radius:50%; background:#5ee08a; box-shadow:0 0 0 3px rgba(94,224,138,.2), 0 0 8px rgba(94,224,138,.7); }
-      .pill.custom .dot { background:#fff; box-shadow:0 0 0 3px rgba(255,255,255,.25), 0 0 8px rgba(255,255,255,.8); }
+      .pill .dot { width:9px; height:9px; border-radius:50%; background:#5ee08a; box-shadow:0 0 8px #5ee08a; }
+      .pill.custom .dot { background:#ff5c7a; box-shadow:0 0 8px #ff5c7a; }
+      .pill.ttp .dot { background:#a98bff; box-shadow:0 0 8px #a98bff; }
 
       /* Au-dessus de tout l'hôte (pastille + pastille d'heure éventuelle) ; 100% = hauteur de l'hôte */
       .panel { display:none; position:absolute; left:0; bottom:calc(100% + 10px); width:440px; max-width:calc(100vw - 24px);
