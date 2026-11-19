@@ -265,10 +265,14 @@
   function render() {
     const customs = FIELDS.filter((f) => getUrl(f));
     pill.classList.toggle('custom', customs.length > 0);
-    lbl.textContent = customs.length ? 'API custom' : 'API';
+    // Connecté à une instance Time-traveler : son nom et son expiration plutôt que l'URL.
+    const tt = !MULTI && pillTT?.links?.[FIELDS[0].tt] === getUrl(FIELDS[0]) ? pillTT : null;
+    lbl.textContent = tt ? 'Time-traveler' : customs.length ? 'API custom' : 'API';
     // URL réellement utilisée (custom ou défaut), sans le protocole ni le slash final.
     // Plusieurs champs : seules les URL custom sont listées (sinon l'URL par défaut du 1er champ).
-    pill.querySelector('.pu').textContent = !MULTI
+    pill.querySelector('.pu').textContent = tt
+      ? (tt.label || tt.instance) + ' · ' + expiry(tt)
+      : !MULTI
       ? host(getUrl(FIELDS[0]) || FIELDS[0].def)
       : customs.length
         ? customs.map((f) => f.label + ' ' + host(getUrl(f))).join(' · ')
@@ -390,6 +394,22 @@
     headers: { Authorization: 'Bearer ' + TT_TOKEN }, cache: 'no-store', credentials: 'omit', signal: AbortSignal.timeout(5000),
   }).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then((j) => j.instances || []);
   const fmt = (d) => new Date(d).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+  function expiry(i) {
+    if (i.lifetime?.keep || !i.lifetime?.expiresAt) return 'sans expiration';
+    const d = new Date(i.lifetime.expiresAt), now = new Date();
+    if (d <= now) return 'expirée';
+    const hm = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    return d.toDateString() === now.toDateString() ? 'expire à ' + hm
+      : 'expire le ' + d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) + ' à ' + hm;
+  }
+  // Pastille : instance de l'URL courante. Un appel au chargement, seulement si l'URL est sur Time-traveler.
+  let pillTT = null;
+  async function loadPillTT() {
+    const f = FIELDS[0], url = getUrl(f);
+    let h = ''; try { h = new URL(url).hostname; } catch {}
+    if (MULTI || !f.tt || !h.endsWith('.' + new URL(TT_API).hostname)) return;
+    try { pillTT = (await fetchInstances()).find((i) => i.links?.[f.tt] === url) || null; render(); } catch {}
+  }
   const el = (tag, className, textContent = '') => Object.assign(document.createElement(tag), { className, textContent });
   const line = (text) => el('div', 'empty', text);
   async function renderTT() {
@@ -509,6 +529,7 @@
   }
   mount();
   render();
+  loadPillTT();
   new MutationObserver(mount).observe(document, { childList: true, subtree: false });
   document.addEventListener('DOMContentLoaded', mount);
   setInterval(mount, 2000);
