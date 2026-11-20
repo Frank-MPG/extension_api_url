@@ -163,6 +163,7 @@
       .pill .dot { width:9px; height:9px; border-radius:50%; background:#5ee08a; box-shadow:0 0 8px #5ee08a; }
       .pill.custom .dot { background:#ff5c7a; box-shadow:0 0 8px #ff5c7a; }
       .pill.ttp .dot { background:#a98bff; box-shadow:0 0 8px #a98bff; }
+      .pill.warn .pu { color:#ffc94d; }
 
       /* Au-dessus de tout l'hôte (pastille + pastille d'heure éventuelle) ; 100% = hauteur de l'hôte */
       .panel { display:none; position:absolute; left:0; bottom:calc(100% + 10px); width:440px; max-width:calc(100vw - 24px);
@@ -309,15 +310,18 @@
   function render() {
     const customs = FIELDS.filter((f) => getUrl(f));
     pill.classList.toggle('custom', customs.length > 0);
-    pill.classList.toggle('ttp', !!pillInstance());
-    // Connecté à une instance Time-traveler : son nom et son expiration plutôt que l'URL.
-    const tt = pillInstance();
-    lbl.textContent = tt ? 'Time-traveler' : customs.length ? 'API custom' : 'API';
+    // Connecté à une instance Time-traveler : son nom et son état (ou son expiration) plutôt que l'URL.
+    const tt = pillInstance(), ttUrl = onTT();
+    pill.classList.toggle('ttp', ttUrl);
+    pill.classList.toggle('warn', !!tt && (!!ttState?.warn || !!expiresSoon(tt)));
+    lbl.textContent = ttUrl ? 'Time-traveler' : customs.length ? 'API custom' : 'API';
     renderClock();
     // URL réellement utilisée (custom ou défaut), sans le protocole ni le slash final.
     // Plusieurs champs : seules les URL custom sont listées (sinon l'URL par défaut du 1er champ).
     pill.querySelector('.pu').textContent = tt
-      ? (tt.label || tt.instance) + ' · ' + expiry(tt)
+      ? (tt.label || tt.instance) + ' · ' + (ttState?.text || expiry(tt))
+      : ttUrl && ttState?.key === 'gone'
+      ? host(getUrl(FIELDS[0])) + ' · indisponible'
       : !MULTI
       ? host(getUrl(FIELDS[0]) || FIELDS[0].def)
       : customs.length
@@ -550,22 +554,163 @@
     };
     ['pointermove', 'pointerup', 'pointercancel'].forEach((t) => window.addEventListener(t, t === 'pointermove' ? move : end, true));
   });
-  async function loadPillTT() {
-    const f = FIELDS[0], url = getUrl(f);
-    let h = ''; try { h = new URL(url).hostname; } catch {}
-    if (MULTI || !f.tt || !h.endsWith('.' + new URL(TT_API).hostname)) return;
-    try { pillTT = (await fetchInstances()).find((i) => i.links?.[f.tt] === url) || null; } catch { return; }
-    if (!pillTT) return;
-    pillTT.skew = Date.parse(pillTT.clock?.now) - Date.now();
-    // Horloge de l'instance déplacée depuis l'activation : décalage mis à jour (rechargement, sinon dates fausses).
-    const sh = readShift();
-    if (shiftOn() && Number.isFinite(pillTT.skew) && Math.abs(sh.skew - pillTT.skew) > 60000) {
-      localStorage.setItem(SHIFT_KEY, JSON.stringify({ ...sh, skew: pillTT.skew }));
-      return location.reload();
+  // ---------- État de l'instance Time-traveler (cf. time-traveler/docs/api-instances-etat.md) ----------
+  // Interrogé toutes les 8 s (5 s pendant un saut) tant que l'onglet est visible, seulement si l'URL est sur Time-traveler.
+  const TT_HOST = new URL(TT_API).hostname;
+  const onTT = () => { if (MULTI || !FIELDS[0].tt) return false; try { return new URL(getUrl(FIELDS[0])).hostname.endsWith('.' + TT_HOST); } catch { return false; } };
+  const OPS = { switch: 'changement de branche', replay: '+1 but en cours', setup: 'lancement en cours', script: 'script en cours' };
+  // Première règle qui s'applique. block = l'API est (ou va être) inutilisable : écran pleine page.
+  function instanceState(i) {
+    if (!i) return { key: 'gone', block: true };
+    if (i.api?.state === 'cut') return { key: 'cut', block: true };
+    if (i.operation?.kind === 'goto') return { key: 'goto', block: true };
+    if (i.operation) return { key: 'busy', text: '⏳ ' + (OPS[i.operation.kind] || i.operation.kind), warn: true };
+    if (i.lastJob?.status === 'error') return { key: 'error', text: '⚠ dernière opération en échec', warn: true };
+    return { key: 'ready' };
+  }
+  const expiresSoon = (i) => !i.lifetime?.keep && i.lifetime?.expiresAt && Date.parse(i.lifetime.expiresAt) - Date.now() < 15 * 60000;
+  let ttState = null, ttTimer, ttPolling = false, clockTimer;
+  async function pollTT() {
+    clearTimeout(ttTimer);
+    if (ttPolling || !onTT() || document.hidden) return;
+    ttPolling = true;
+    let list;
+    try { list = await fetchInstances(); } catch (e) {
+      ttPolling = false;
+      if (/HTTP 401/.test(e.message)) return console.warn('[API URL] Time-traveler : jeton refusé (401), état des instances indisponible');
+      ttTimer = setTimeout(pollTT, 8000); // réseau : nouvel essai
+      return;
     }
-    render();
-    // Seule l'heure est rafraîchie (render() réécrirait aussi le panneau et casserait une sélection en cours).
-    setInterval(renderClock, 1000);
+    ttPolling = false;
+    const url = getUrl(FIELDS[0]);
+    pillTT = list.find((i) => i.links?.[FIELDS[0].tt] === url) || null;
+    if (pillTT) {
+      const off = pillTT.clock?.offsetSeconds;
+      pillTT.skew = Number.isFinite(off) ? off * 1000 : Date.parse(pillTT.clock?.now) - Date.now();
+    }
+    const st = instanceState(pillTT), wasBlocked = ttState?.block;
+    ttState = st;
+    // Fin d'un saut (ou instance revenue) : l'heure de l'instance a changé, les données affichées sont périmées.
+    if (wasBlocked && !st.block) { syncShift(); return location.reload(); }
+    if (!st.block && syncShift()) return location.reload();
+    render(); renderDown();
+    if (pillTT && !clockTimer) clockTimer = setInterval(renderClock, 1000); // seule l'heure, chaque seconde
+    ttTimer = setTimeout(pollTT, st.block ? 5000 : 8000);
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) pollTT(); });
+  // Mode « dates d'aujourd'hui » : décalage stocké recalé si l'horloge de l'instance a bougé (> 1 min). true = changé.
+  function syncShift() {
+    const sh = readShift();
+    if (!pillTT || !shiftOn() || !Number.isFinite(pillTT.skew) || Math.abs(sh.skew - pillTT.skew) <= 60000) return false;
+    localStorage.setItem(SHIFT_KEY, JSON.stringify({ ...sh, skew: pillTT.skew }));
+    return true;
+  }
+
+  // ---------- API custom qui ne répond plus : ping au chargement, nouvel essai toutes les 10 s, rechargement au retour ----------
+  let down = null, downTimer;
+  async function checkApis() {
+    clearTimeout(downTimer);
+    const rs = await Promise.all(FIELDS.filter((f) => getUrl(f)).map(async (f) => ({ f, r: await ping(getUrl(f), f) })));
+    const ko = rs.find((x) => x.r.level === 'ko');
+    if (down && !ko) return location.reload();
+    down = ko ? { url: getUrl(ko.f), label: MULTI ? ko.f.label : '', text: ko.r.text } : null;
+    renderDown();
+    if (down) downTimer = setTimeout(checkApis, 10000);
+  }
+
+  // ---------- Écran pleine page (au-dessus du site, sous la pastille) : saut en cours, instance disparue, API morte ----------
+  const downHost = document.createElement('mpp-api-url-down');
+  downHost.style.cssText = 'all:initial;position:fixed;inset:0;z-index:2147483646;';
+  const downRoot = downHost.attachShadow({ mode: 'closed' });
+  downRoot.innerHTML = `<style>
+      * { box-sizing:border-box; }
+      [hidden] { display:none !important; }
+      .bg { position:absolute; inset:0; display:grid; place-items:center; padding:24px; overflow:auto;
+        font-family:system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing:antialiased; color:#e9ecf1;
+        background:radial-gradient(1200px 600px at 50% -10%, rgba(var(--glow),.22), transparent 60%), #0d0f14; }
+      .bg.violet { --glow:120,80,255; --ring:rgba(160,130,255,.6); --acc:#b9a8ff; }
+      .bg.red { --glow:255,60,100; --ring:rgba(255,92,122,.6); --acc:#ff8aa0; }
+      .bg.gray { --glow:140,150,170; --ring:rgba(255,255,255,.18); --acc:#c9cfdb; }
+      .card { width:min(520px, 100%); padding:32px; border-radius:20px; text-align:center; background:rgba(22,24,32,.8);
+        box-shadow:inset 0 0 0 1px var(--ring), 0 24px 60px rgba(var(--glow),.18), 0 2px 8px rgba(0,0,0,.4); }
+      .ic { font-size:44px; line-height:1; margin-bottom:14px; }
+      .bg.violet .ic { animation:sway 2.4s ease-in-out infinite; }
+      @keyframes sway { 50% { transform:rotate(-8deg) scale(1.05); } }
+      @media (prefers-reduced-motion: reduce) { .ic { animation:none !important; } }
+      h1 { margin:0 0 8px; font-size:22px; font-weight:700; }
+      p { margin:0 0 6px; font-size:14.5px; line-height:1.5; color:#b7bec9; }
+      .u { display:inline-block; max-width:100%; margin:10px 0 4px; padding:5px 12px; border-radius:999px; overflow:hidden; text-overflow:ellipsis;
+        white-space:nowrap; font:500 13px ui-monospace, SFMono-Regular, Menlo, monospace; color:var(--acc); background:rgba(255,255,255,.06); }
+      .tg { margin-top:14px; font-size:14px; color:#c9cfdb; } .tg b { color:var(--acc); }
+      .pr { margin-top:16px; text-align:left; }
+      .bar { height:8px; border-radius:999px; background:rgba(255,255,255,.08); overflow:hidden; }
+      .bar i { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg, #7b5cff, #b9a8ff);
+        box-shadow:0 0 12px rgba(var(--glow),.6); transition:width .4s; }
+      .bar.ind i { width:35% !important; animation:ind 1.4s ease-in-out infinite; }
+      @keyframes ind { from { transform:translateX(-100%); } to { transform:translateX(290%); } }
+      .pl { display:flex; justify-content:space-between; gap:12px; margin-top:7px; font-size:12.5px; color:#9aa3b2; }
+      .pl span:last-child { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .wn { margin-top:8px; font-size:12.5px; color:#ffc94d; }
+      .row { display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin-top:24px; }
+      button { font:600 14px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; padding:10px 16px; border-radius:10px; cursor:pointer;
+        border:none; color:#e9ecf1; background:rgba(255,255,255,.07); box-shadow:inset 0 0 0 1px rgba(255,255,255,.12); transition:filter .15s; }
+      button:hover { filter:brightness(1.3); }
+      button:focus-visible { outline:2px solid #fff; outline-offset:2px; }
+      button.pri { color:#fff; background:rgba(var(--glow),.35); box-shadow:inset 0 0 0 1px var(--ring); }
+      .au { margin-top:16px; font-size:12px; color:#7d8696; }
+    </style>
+    <div class="bg"><div class="card" role="alert">
+      <div class="ic"></div><h1></h1><p class="tx"></p><div class="u"></div>
+      <div class="tg"></div>
+      <div class="pr"><div class="bar"><i></i></div><div class="pl"><span class="pn"></span><span class="pc"></span></div><div class="wn"></div></div>
+      <div class="row">
+        <button class="pri" data-a="retry">Réessayer</button>
+        <button data-a="pick">Choisir une autre API</button>
+        <button data-a="reset">Revenir à l'API par défaut</button>
+      </div>
+      <div class="au"></div>
+    </div></div>`;
+  downRoot.addEventListener('click', (e) => {
+    const a = e.target.closest?.('button')?.dataset.a;
+    if (a === 'retry') ttState?.block ? pollTT() : checkApis();
+    if (a === 'pick') toggle(true);
+    if (a === 'reset') reset(true);
+  });
+  const D = (s) => downRoot.querySelector(s);
+  function downView() {
+    const s = ttState, op = pillTT?.operation;
+    if (s?.key === 'gone') return { tone: 'gray', icon: '🛰️', title: 'Instance Time-traveler indisponible',
+      text: 'Elle est éteinte, supprimée ou remise en réserve : son API ne répondra plus. Choisis une autre instance ou reviens à l\'API par défaut.',
+      url: getUrl(FIELDS[0]), auto: 'Vérification automatique toutes les 5 s.' };
+    if (s?.block) return { tone: 'violet', icon: '🕰️', title: 'Saut dans le temps en cours',
+      text: s.key === 'cut' ? 'L\'API de l\'instance est coupée le temps du saut : le site est mis en pause.'
+        : 'Le saut démarre ou se termine : l\'API va être coupée ou vient d\'être rétablie.',
+      url: (pillTT.label || pillTT.instance) + ' · ' + host(getUrl(FIELDS[0])),
+      target: op?.at, steps: op?.steps || null, progress: true,
+      auto: 'La page se recharge toute seule à la fin du saut.' };
+    if (down) return { tone: 'red', icon: '🔌', title: (down.label ? 'L\'API ' + down.label : 'Cette API') + ' ne répond pas',
+      text: down.text + '. Le site ne peut pas fonctionner avec cette URL.', url: down.url,
+      auto: 'Nouvel essai automatique toutes les 10 s : la page se recharge dès qu\'elle répond.' };
+    return null;
+  }
+  function renderDown() {
+    const v = downView();
+    if (!v) return downHost.remove();
+    D('.bg').className = 'bg ' + v.tone;
+    D('.ic').textContent = v.icon; D('h1').textContent = v.title; D('.tx').textContent = v.text;
+    D('.u').textContent = v.url; D('.u').title = v.url;
+    D('.tg').hidden = !v.target;
+    if (v.target) D('.tg').innerHTML = 'Destination : <b></b>', D('.tg b').textContent = fmt(v.target);
+    D('.pr').hidden = !v.progress;
+    const st = v.steps, pct = st?.total ? Math.min(100, Math.round((st.done / st.total) * 100)) : 0;
+    D('.bar').classList.toggle('ind', !st?.total);
+    D('.bar i').style.width = pct + '%';
+    D('.pn').textContent = st?.total ? st.done + ' / ' + st.total + ' étapes' : 'Progression indisponible';
+    D('.pc').textContent = st?.current || ''; D('.pc').title = st?.current || '';
+    D('.wn').hidden = !(st?.failed > 0);
+    D('.wn').textContent = st?.failed > 0 ? '⚠ ' + st.failed + ' étape' + (st.failed > 1 ? 's' : '') + ' en échec : le saut continue jusqu\'à sa destination.' : '';
+    D('.au').textContent = v.auto;
+    if (!downHost.isConnected && document.documentElement) document.documentElement.appendChild(downHost);
   }
   const el = (tag, className, textContent = '') => Object.assign(document.createElement(tag), { className, textContent });
   const line = (text) => el('div', 'empty', text);
@@ -683,10 +828,12 @@
   function mount() {
     const parent = document.documentElement;
     if (parent && !hostEl.isConnected) parent.appendChild(hostEl);
+    if (parent && !downHost.isConnected && downView()) parent.appendChild(downHost);
   }
   mount();
   render();
-  loadPillTT();
+  pollTT();
+  checkApis();
   new MutationObserver(mount).observe(document, { childList: true, subtree: false });
   document.addEventListener('DOMContentLoaded', mount);
   setInterval(mount, 2000);
