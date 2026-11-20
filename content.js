@@ -589,15 +589,26 @@
       pillTT.skew = Number.isFinite(off) ? off * 1000 : Date.parse(pillTT.clock?.now) - Date.now();
     }
     const st = instanceState(pillTT), wasBlocked = ttState?.block;
+    // Fin d'un saut (ou instance revenue) : « up » ne prouve pas que l'API répond. Écran gardé jusqu'à un /app/status en 2xx.
+    if (wasBlocked && !st.block) { ttState = { key: 'waking', block: true, text: '⏳ API en redémarrage' }; render(); return waitApi(); }
     ttState = st;
-    // Fin d'un saut (ou instance revenue) : l'heure de l'instance a changé, les données affichées sont périmées.
-    if (wasBlocked && !st.block) { syncShift(); return location.reload(); }
     if (!st.block && syncShift()) return location.reload();
     render(); renderDown();
     if (pillTT && !clockTimer) clockTimer = setInterval(renderClock, 1000); // seule l'heure, chaque seconde
     ttTimer = setTimeout(pollTT, st.block ? 5000 : 8000);
   }
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) pollTT(); });
+  // Puis rechargement : l'heure de l'instance a changé, les données affichées sont périmées.
+  async function waitApi() {
+    clearTimeout(ttTimer);
+    if (ttPolling) return;
+    ttPolling = true;
+    const r = await ping(getUrl(FIELDS[0]), FIELDS[0]);
+    ttPolling = false;
+    if (r.level === 'ok') { syncShift(); return location.reload(); }
+    ttState.last = r.text; renderDown();
+    ttTimer = setTimeout(waitApi, 3000);
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) ttState?.key === 'waking' ? waitApi() : pollTT(); });
   // Mode « dates d'aujourd'hui » : décalage stocké recalé si l'horloge de l'instance a bougé (> 1 min). true = changé.
   function syncShift() {
     const sh = readShift();
@@ -672,7 +683,7 @@
     </div></div>`;
   downRoot.addEventListener('click', (e) => {
     const a = e.target.closest?.('button')?.dataset.a;
-    if (a === 'retry') ttState?.block ? pollTT() : checkApis();
+    if (a === 'retry') ttState?.key === 'waking' ? waitApi() : ttState?.block ? pollTT() : checkApis();
     if (a === 'pick') toggle(true);
     if (a === 'reset') reset(true);
   });
@@ -682,6 +693,10 @@
     if (s?.key === 'gone') return { tone: 'gray', icon: '🛰️', title: 'Instance Time-traveler indisponible',
       text: 'Elle est éteinte, supprimée ou remise en réserve : son API ne répondra plus. Choisis une autre instance ou reviens à l\'API par défaut.',
       url: getUrl(FIELDS[0]), auto: 'Vérification automatique toutes les 5 s.' };
+    if (s?.key === 'waking') return { tone: 'violet', icon: '🕰️', title: 'Saut terminé, l\'API redémarre',
+      text: 'Le site revient dès que ' + FIELDS[0].status + ' répond.' + (s.last ? ' Dernier essai : ' + s.last + '.' : ''),
+      url: (pillTT.label || pillTT.instance) + ' · ' + host(getUrl(FIELDS[0])), progress: true, wait: 'En attente de l\'API…',
+      auto: 'Nouvel essai toutes les 3 s, puis rechargement de la page.' };
     if (s?.block) return { tone: 'violet', icon: '🕰️', title: 'Saut dans le temps en cours',
       text: s.key === 'cut' ? 'L\'API de l\'instance est coupée le temps du saut : le site est mis en pause.'
         : 'Le saut démarre ou se termine : l\'API va être coupée ou vient d\'être rétablie.',
@@ -705,7 +720,7 @@
     const st = v.steps, pct = st?.total ? Math.min(100, Math.round((st.done / st.total) * 100)) : 0;
     D('.bar').classList.toggle('ind', !st?.total);
     D('.bar i').style.width = pct + '%';
-    D('.pn').textContent = st?.total ? st.done + ' / ' + st.total + ' étapes' : 'Progression indisponible';
+    D('.pn').textContent = st?.total ? st.done + ' / ' + st.total + ' étapes' : v.wait || 'Progression indisponible';
     D('.pc').textContent = st?.current || ''; D('.pc').title = st?.current || '';
     D('.wn').hidden = !(st?.failed > 0);
     D('.wn').textContent = st?.failed > 0 ? '⚠ ' + st.failed + ' étape' + (st.failed > 1 ? 's' : '') + ' en échec : le saut continue jusqu\'à sa destination.' : '';
