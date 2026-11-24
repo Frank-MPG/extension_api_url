@@ -7,7 +7,7 @@ async function activeTab() {
   return tab;
 }
 function siteOf(tab) {
-  try { return ApiUrlSites.detect(new URL(tab.url).hostname); } catch { return null; }
+  try { return ApiUrlSites.detect(new URL(tab.url).host); } catch { return null; }
 }
 
 // Exécuté dans la page. ids : champs à modifier (reset : tous ceux passés).
@@ -48,7 +48,7 @@ function normalize(v) {
     return;
   }
   const multi = site.fields.length > 1;
-  const env = ApiUrlSites.envOf(site, new URL(tab.url).hostname); // historique séparé prod / dev
+  const env = ApiUrlSites.envOf(site, new URL(tab.url).host); // historique séparé prod / dev
   document.querySelector('h1').textContent = site.title + (env === 'dev' ? ' (dev)' : '') + ' – API URL' + (multi ? 's' : '');
   const urls = await run(site, 'get', site.fields.map((f) => f.id));
 

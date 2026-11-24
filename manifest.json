@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MPG / MPP / L1 – Changer d'API",
-  "version": "1.26.2",
+  "version": "1.27.0",
   "description": "Overlay pour définir / appliquer / reset les API URL custom de mpg.football, mpp.football et ligue1.com.",
   "homepage_url": "https://github.com/frank-mpg/extension_api_url",
   "icons": {
@@ -20,7 +20,8 @@
     "*://mpg.football/*",
     "*://*.mpg.football/*",
     "*://ligue1.com/*",
-    "*://*.ligue1.com/*"
+    "*://*.ligue1.com/*",
+    "http://localhost/*"
   ],
   "action": {
     "default_popup": "popup.html",
@@ -37,7 +38,8 @@
         "*://mpg.football/*",
         "*://*.mpg.football/*",
         "*://ligue1.com/*",
-        "*://*.ligue1.com/*"
+        "*://*.ligue1.com/*",
+        "http://localhost/*"
       ],
       "js": [
         "sites.js",
@@ -50,7 +52,8 @@
     {
       "matches": [
         "*://mpg.football/*",
-        "*://*.mpg.football/*"
+        "*://*.mpg.football/*",
+        "http://localhost/*"
       ],
       "js": [
         "tt_shift.js"

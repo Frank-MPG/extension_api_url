@@ -3,6 +3,7 @@
 // Chaque site stocke ses URL custom dans un store zustand persisté en localStorage
 // ({ state: { data: { <champ>: url } }, version }). Un site peut avoir plusieurs champs
 // (ligue1.com : L1 / FL1 / Fanbase, comme sur https://ligue1.com/en/debug-mode).
+//   local   : host:port du front lancé en local (traité comme dev)
 //   key     : clé localStorage du store
 //   version : version zustand, utilisée seulement si le store n'existe pas encore
 //   fields  : { id (champ dans state.data), label, def (URL par défaut en prod),
@@ -13,7 +14,7 @@
 
   const SITES = {
     MPG: {
-      title: 'MPG', domain: 'mpg.football', key: 'mmkv.default\\debug', version: 0,
+      title: 'MPG', domain: 'mpg.football', local: 'localhost:3000', key: 'mmkv.default\\debug', version: 0,
       fields: [{ id: 'url', label: 'API', def: 'https://api.mpg.football', dev: 'https://dev.api.mpg.football', status: '/app/status', tt: 'mpg-api' }],
     },
     MPP: {
@@ -31,9 +32,10 @@
   };
 
   const onDomain = (h, d) => h === d || h.endsWith('.' + d);
-  function detect(hostname) {
+  // host = location.host (avec le port) : le front local se reconnaît à son port.
+  function detect(host) {
     for (const [name, cfg] of Object.entries(SITES)) {
-      if (onDomain(hostname, cfg.domain)) return { name, ...cfg };
+      if (host === cfg.local || onDomain(host, cfg.domain)) return { name, ...cfg };
     }
     return null;
   }

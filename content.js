@@ -5,9 +5,9 @@
   window.__mppApiUrlOverlay = true;
 
   // Config du site (sites.js) : clé du store zustand, champs d'URL, URL par défaut.
-  const site = globalThis.ApiUrlSites.detect(location.hostname);
+  const site = globalThis.ApiUrlSites.detect(location.host);
   if (!site) return;
-  const ENV = globalThis.ApiUrlSites.envOf(site, location.hostname); // historique séparé prod / dev
+  const ENV = globalThis.ApiUrlSites.envOf(site, location.host); // historique séparé prod / dev
   const FIELDS = globalThis.ApiUrlSites.fieldsFor(site, ENV); // URL par défaut selon prod / dev
   const MULTI = FIELDS.length > 1;
   let fi = 0; // champ affiché dans le panneau (onglet actif)
