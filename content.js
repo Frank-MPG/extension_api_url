@@ -135,6 +135,10 @@
         font-size:13px; font-weight:600; cursor:grab; user-select:none; -webkit-user-select:none; touch-action:none; }
       .clock .dt, .clock .tm { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric:tabular-nums; }
       .clock .dt { color:#b9a8ff; }
+      .clock.paused { --ring:rgba(255,201,77,.85); --glow:255,180,40; }
+      .clock.paused .dt, .clock.paused .tm { color:#ffc94d; }
+      .clock.paused .tm::after { content:' · EN PAUSE'; font:700 11px system-ui, -apple-system, sans-serif; letter-spacing:.6px; }
+      .clock.docked.paused .tm::after { display:block; text-align:center; font-size:9.5px; }
       /* Bouton rond détaché, à droite de l'heure : violet = dates de l'instance, ambre = dates ramenées à aujourd'hui */
       .sh2 { flex:none; display:grid; place-items:center; width:28px; height:28px; padding:0; border-radius:50%; cursor:pointer;
         border:none; color:#b9a8ff; transition:transform .12s, filter .15s; }
@@ -461,7 +465,10 @@
     clock.hidden = shiftBtn.hidden = !Number.isFinite(tt?.skew);
     if (clock.hidden) return headHost.remove();
     const inHead = dragging ? clock.classList.contains('docked') : placeClock();
-    const d = new Date(Date.now() + tt.skew);
+    // En pause : horloge figée à clock.now (offsetSeconds, lui, recule avec le temps réel).
+    const paused = !!tt.clock?.paused, d = new Date(paused ? Date.parse(tt.clock.now) : Date.now() + tt.skew);
+    clock.classList.toggle('paused', paused);
+    clock.querySelector('.em').textContent = paused ? '⏸' : '🕰';
     clock.querySelector('.dt').textContent = d.toLocaleDateString('fr-FR', inHead ? { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' } : { dateStyle: 'short' });
     clock.querySelector('.tm').textContent = d.toLocaleTimeString('fr-FR');
     const on = shiftOn(), days = Math.round(Math.abs(tt.skew) / 864e5);
@@ -558,13 +565,14 @@
   // Interrogé toutes les 8 s (5 s pendant un saut) tant que l'onglet est visible, seulement si l'URL est sur Time-traveler.
   const TT_HOST = new URL(TT_API).hostname;
   const onTT = () => { if (MULTI || !FIELDS[0].tt) return false; try { return new URL(getUrl(FIELDS[0])).hostname.endsWith('.' + TT_HOST); } catch { return false; } };
-  const OPS = { switch: 'changement de branche', replay: '+1 but en cours', setup: 'lancement en cours', script: 'script en cours' };
+  const OPS = { switch: 'changement de branche', replay: '+1 but en cours', setup: 'lancement en cours', script: 'script en cours', pause: 'pause / reprise de l\'horloge' };
   // Première règle qui s'applique. block = l'API est (ou va être) inutilisable : écran pleine page.
   function instanceState(i) {
     if (!i) return { key: 'gone', block: true };
     if (i.api?.state === 'cut') return { key: 'cut', block: true };
     if (i.operation?.kind === 'goto') return { key: 'goto', block: true };
     if (i.operation) return { key: 'busy', text: '⏳ ' + (OPS[i.operation.kind] || i.operation.kind), warn: true };
+    if (i.clock?.paused) return { key: 'paused', text: '⏸ horloge en pause', warn: true };
     if (i.lastJob?.status === 'error') return { key: 'error', text: '⚠ dernière opération en échec', warn: true };
     return { key: 'ready' };
   }
@@ -612,7 +620,7 @@
   // Mode « dates d'aujourd'hui » : décalage stocké recalé si l'horloge de l'instance a bougé (> 1 min). true = changé.
   function syncShift() {
     const sh = readShift();
-    if (!pillTT || !shiftOn() || !Number.isFinite(pillTT.skew) || Math.abs(sh.skew - pillTT.skew) <= 60000) return false;
+    if (!pillTT || pillTT.clock?.paused || !shiftOn() || !Number.isFinite(pillTT.skew) || Math.abs(sh.skew - pillTT.skew) <= 60000) return false;
     localStorage.setItem(SHIFT_KEY, JSON.stringify({ ...sh, skew: pillTT.skew }));
     return true;
   }
@@ -753,7 +761,7 @@
       l1.append(el('b', '', i.label || i.instance));
       if (i.label) l1.append(el('span', 'id', i.instance));
       if (active) l1.append(el('span', 'on', '✓'));
-      const state = ready ? (i.clock?.now ? '🕰  ' + fmt(i.clock.now) : host(url)) : '⏳  ' + (i.busy ? 'occupée' : i.lastJob.status);
+      const state = ready ? (i.clock?.now ? (i.clock.paused ? '⏸  ' : '🕰  ') + fmt(i.clock.now) : host(url)) : '⏳  ' + (i.busy ? 'occupée' : i.lastJob.status);
       b.append(l1, el('span', 'l2', state));
       b.title = [
         url,
