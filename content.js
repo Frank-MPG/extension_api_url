@@ -441,7 +441,7 @@
   // ---------- Time-traveler : un bouton par instance → applique son API (links[field().tt]) ----------
   // Token en lecture seule (scope « instances »), volontairement en dur : il n'est pas sensible.
   const TT_API = 'https://time-traveler.mpg.football/api/instances';
-  const TT_TOKEN = 'eyJzY29wZSI6Imluc3RhbmNlcyIsImp0aSI6IjFkMTFmNDdlLTY1NzktNGU0Ni1iYjdhLTA1MjIzMjI0YjI0NCIsImlhdCI6IjIwMjYtMTEtMjRUMDk6MjA6NTAuMjE5WiJ9.m5PXk-yDsWB0Xvx96nX6npGTg49jicjd2r7UWzOQnHQ';
+  const TT_TOKEN = 'eyJpc3MiOiJ0aW1lLXRyYXZlbGVyIiwic2NvcGUiOiJpbnN0YW5jZXMiLCJqdGkiOiIxOTQ3MGE0Zi0wYWU2LTQyMzUtYTRmMS1kMzBmOWE3ZTQ4MjciLCJpYXQiOiIyMDI2LTExLTI1VDE2OjM1OjI1Ljk2MFoifQ.uthraF-2ASQlup-OXQ6IeSlZfd4NHKcqo22ANf-tTcc';
   const ttBox = $('.ttbox'), ttList = $('.ttlist');
   let ttReq = null; // une requête par ouverture du panneau
   const fetchInstances = () => fetch(TT_API, {
